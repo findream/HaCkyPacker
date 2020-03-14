@@ -1,0 +1,3 @@
+﻿  main.cpp
+e:\毕业设计\hackypack\test\main.cpp(30): warning C4715: “Mystricmp”: 不是所有的控件路径都返回值
+  Test.vcxproj -> E:\毕业设计\HaCkyPack\Debug\Test.exe
