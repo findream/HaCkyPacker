@@ -1,5 +1,7 @@
 ﻿  Stub.cpp
-e:\毕业设计\hackypack\stub\stub.cpp(597): warning C4715: “Mystricmp”: 不是所有的控件路径都返回值
+e:\毕业设计\hackypack\stub\stub.cpp(424): warning C4244: “=”: 从“DWORD”转换到“byte”，可能丢失数据
+e:\毕业设计\hackypack\stub\stub.cpp(425): warning C4244: “=”: 从“DWORD”转换到“byte”，可能丢失数据
+e:\毕业设计\hackypack\stub\stub.cpp(426): warning C4244: “=”: 从“DWORD”转换到“byte”，可能丢失数据
     正在创建库 E:\毕业设计\HaCkyPack\Debug\Stub.lib 和对象 E:\毕业设计\HaCkyPack\Debug\Stub.exp
 Stub.obj : warning LNK4254: 节“.data”(C0000040)合并到具有不同特性的“.text”(60000020)
   Stub.vcxproj -> E:\毕业设计\HaCkyPack\Debug\Stub.dll

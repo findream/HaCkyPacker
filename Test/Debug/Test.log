@@ -1,3 +1,6 @@
 ﻿  main.cpp
-e:\毕业设计\hackypack\test\main.cpp(30): warning C4715: “Mystricmp”: 不是所有的控件路径都返回值
+e:\毕业设计\hackypack\test\main.cpp(56): warning C4733: 内联 asm 分配到“FS:0”: 处理程序未注册为安全处理程序
+e:\毕业设计\hackypack\test\main.cpp(58): warning C4733: 内联 asm 分配到“FS:0”: 处理程序未注册为安全处理程序
+e:\毕业设计\hackypack\test\main.cpp(50): warning C4731: “fun1”: 框架指针寄存器“ebp”被内联程序集代码修改
+e:\毕业设计\hackypack\test\main.cpp(63): warning C4731: “fun1”: 框架指针寄存器“ebp”被内联程序集代码修改
   Test.vcxproj -> E:\毕业设计\HaCkyPack\Debug\Test.exe

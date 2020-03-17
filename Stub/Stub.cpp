@@ -18,6 +18,7 @@ fnVirtualProtect	g_pfnVirtualProtect = NULL;
 fnVirtualAlloc		g_pfnVirtualAlloc = NULL;
 fnExitProcess		g_pfnExitProcess = NULL;
 fnMessageBox		g_pfnMessageBoxA = NULL;
+fnRtlMoveMemory     g_pfnRtlMoveMemory = NULL;
 
 //一些全局变量
 DWORD dwImageBase = 0;		//整个程序的镜像基址
@@ -28,7 +29,8 @@ DWORD dwNewOEP = 0;		    //PE文件的OEP
 //Start()：Stub.dll最开始执行的地方，反调试开始的地方
 //ChildFunc：NULL
 //************************************************************
-extern "C" __declspec(dllexport) __declspec(naked)
+//extern "C" __declspec(dllexport) __declspec(naked)
+extern "C" __declspec(dllexport) __declspec()
 void Start()
 {
 	//Step1:首先是获取所有Win32函数地址
@@ -39,10 +41,10 @@ void Start()
 	RecoverDataDir();
 	
 	//Step3:填充IAT
-	FixIAT();
+	//FixIAT();
 
-	//Step2：解密IAT表
-	//DecryptIAT();
+	//Step2：加密IAT表
+	DecryptIAT();
 
 
 
@@ -57,6 +59,36 @@ void Start()
 	//反调试
 	//IAT加密等
 	//跳转入程序入口点
+
+	//采用改变指令流来加花
+	DWORD p = 0;
+	__asm {
+		call	l1;
+	l1:
+		pop		eax;
+		mov		p, eax;			//确定当前程序段的位置
+		call	f1;
+		_EMIT	0xEA;			//花指令，此处永远不会执行到
+		jmp		l2;				//call结束以后执行到这里
+	f1:
+		pop ebx;
+		inc ebx;
+		push ebx;
+		mov eax, 0x1234567;
+		ret;
+	l2:
+		call f2;				//用ret指令实现跳转
+		mov ebx, 0x1234567;	    //这里永远不会执行到
+		jmp e;
+	f2:
+		mov ebx, 0x1234567;
+		pop ebx;				//弹出压栈的地址
+		mov ebx, offset e;		
+		push ebx;				
+		ret;					//跳转
+	e:
+		mov ebx, 0x1234567;
+	}
 	dwNewOEP = g_ShellData.dwOEP + g_ShellData.dwImageBase;
 	_asm jmp dwNewOEP
 }
@@ -78,6 +110,9 @@ void InitWin32FunAddr()
 	g_pfnExitProcess = (fnExitProcess)g_pfnGetProcAddress(hKernel32, "ExitProcess");
 	g_pfnVirtualAlloc = (fnVirtualAlloc)g_pfnGetProcAddress(hKernel32, "VirtualAlloc");
 	g_pfnMessageBoxA = (fnMessageBox)g_pfnGetProcAddress(hKernel32, "MessageBoxA");
+
+	HMODULE hNtdll = g_pfnLoadLibraryA("Ntdll.dll");
+	g_pfnRtlMoveMemory = (fnRtlMoveMemory)g_pfnGetProcAddress(hNtdll, "RtlMoveMemory");
 }
 
 /*-------------------------
@@ -323,83 +358,91 @@ void SetFileHeaderProtect(bool nWrite)
 
 
 //************************************************************
-//DecryptIAT:解密IAT
+//DecryptIAT:加密IAT
 //ChilddFunc:NULL
+//https://www.jianshu.com/p/1ee8bf2ec131
+//https://zhuanlan.zhihu.com/p/66096824
 //************************************************************
 void  DecryptIAT()
 {
-	FILE *fp = fopen("HackyPackLog.log", "a");
+	//FILE *fp = fopen("HackyPackLog.log", "a");
+	HMODULE hModule = (HMODULE)GetModuleHandle(NULL);
+	DWORD dwRvaOfImportTable =
+		GetOptionHeader((LPBYTE)hModule)->DataDirectory[1].VirtualAddress;
+	PIMAGE_IMPORT_DESCRIPTOR pImportTable = (PIMAGE_IMPORT_DESCRIPTOR)(dwRvaOfImportTable + (DWORD)hModule);
 
-	LPBYTE lpFinalBuf = (LPBYTE)g_pfnGetModuleHandleA(NULL);
-	PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)lpFinalBuf;
-	PIMAGE_NT_HEADERS pNtHeaders = (PIMAGE_NT_HEADERS)((DWORD)lpFinalBuf + pDosHeader->e_lfanew);
-	DWORD Rav_Import_Table = pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
-	PIMAGE_IMPORT_DESCRIPTOR ImportTable = PIMAGE_IMPORT_DESCRIPTOR((DWORD)lpFinalBuf + Rav_Import_Table);
-
-	//遍历所有的IID
-	//遍历IIDpFirsrThunk
-	while (ImportTable->Name)
+	//外层遍历模块
+	while (pImportTable->Name)
 	{
-		//DllName
-		//获取RvaOfDllName
-		PDWORD dwTmpDllName = &ImportTable->Name;
-		fprintf(fp, "[*]Packer::EncryIAT--->dwOldRvaOfDllName：%x\n", *dwTmpDllName);
-
-
-		char* pDllName = (char*)((DWORD)lpFinalBuf + ImportTable->Name);
-		fprintf(fp, "[*]Packer::EncryIAT--->dwOldDllName：%s\n", pDllName);
-		for (DWORD i = 0; i < strlen(pDllName); i++)
-			pDllName[i] ^= 0x234;
-		fprintf(fp, "[*]Packer::EncryIAT--->dwNewDllName：%s\n", pDllName);
-
-		//避免提前修改RvaOfDllName值导致DllName获取不到
-		*dwTmpDllName = *dwTmpDllName ^ 0x123;
-		fprintf(fp, "[*]Packer::EncryIAT--->dwNewRvaOfDllName：%x\n", *dwTmpDllName);
-
-		PIMAGE_THUNK_DATA pFirsrThunk = (PIMAGE_THUNK_DATA)((DWORD)lpFinalBuf + ImportTable->FirstThunk);
-		//遍历每个IAT
-		while (pFirsrThunk->u1.AddressOfData)
+		//获取当前模块地址
+		char* dllName = (char*)((DWORD)hModule + pImportTable->Name);
+		HMODULE hDllModule = g_pfnLoadLibraryA(dllName);
+		if (pImportTable->FirstThunk)
 		{
-
-			//如果是序号方式导入
-			if (IMAGE_SNAP_BY_ORDINAL(pFirsrThunk->u1.AddressOfData))
-			{
-				PDWORD dwTmpOrd = &pFirsrThunk->u1.Ordinal;
-				*dwTmpOrd = *dwTmpOrd ^ 0x234;
-			}
+			//IAT
+			PDWORD FirstThunk = PDWORD(pImportTable->FirstThunk + (DWORD)hModule);
+			DWORD ThunkRva = 0;
+			if (pImportTable->OriginalFirstThunk == 0)
+				ThunkRva = pImportTable->FirstThunk;
 			else
+				ThunkRva = pImportTable->OriginalFirstThunk;
+			PIMAGE_THUNK_DATA pThunk = (PIMAGE_THUNK_DATA)(ThunkRva + (DWORD)hModule);
+
+			//函数的名字
+			char*FunName = 0;
+			//内层遍历模块中的函数
+			while (pThunk->u1.Ordinal)
 			{
-				//此处获取的是函数地址
-				PDWORD FuncAddr = &pFirsrThunk->u1.Function;
-				fprintf(fp, "[*]Packer::EncryIAT--->u1.Function：%x\n", *FuncAddr);
+				//序号导入
+				if (pThunk->u1.Ordinal & 0x80000000)
+				{
+					FunName = (char*)(pThunk->u1.Ordinal & 0x7fffffff);
+				}
+				else
+				{
+				//名称导入
+					PIMAGE_IMPORT_BY_NAME pImportByName = (PIMAGE_IMPORT_BY_NAME)
+						(pThunk->u1.Ordinal + (DWORD)hModule);
+					FunName = pImportByName->Name;
+				}
 
+				DWORD dwFunAddr = (DWORD)g_pfnGetProcAddress(hDllModule, FunName);
+				//加密函数地址
+				dwFunAddr ^= 0x13973575;
+				LPVOID AllocMem = (PDWORD)g_pfnVirtualAlloc(NULL, 0x20, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 
-				//此处还应该获取函数名称
-				PIMAGE_IMPORT_BY_NAME pThunkName = (PIMAGE_IMPORT_BY_NAME)((DWORD)lpFinalBuf + pFirsrThunk->u1.AddressOfData);
+				//大家好像都是用的这一套加密逻辑
+				byte OpCode[] = { 0xe8, 0x01, 0x00, 0x00,
+								  0x00, 0xe9, 0x58, 0xeb,
+								  0x01, 0xe8, 0xb8, 0x8d,
+								  0xe4, 0xd8, 0x62, 0xeb,
+								  0x01, 0x15, 0x35, 0x75,
+								  0x35, 0x97, 0x13, 0xeb,
+								  0x01, 0xff, 0x50, 0xeb,
+								  0x02, 0xff, 0x15, 0xc3 };
+				//把dwFunAddr写入到解密的ShellCode中
+				OpCode[11] = dwFunAddr;
+				OpCode[12] = dwFunAddr >> 0x8;
+				OpCode[13] = dwFunAddr >> 0x10;
+				OpCode[14] = dwFunAddr >> 0x18;
 
-				PWORD Hint = &pThunkName->Hint;
-				fprintf(fp, "[*]Packer::EncryIAT--->u1.OldFunction：%x\n", *Hint);
+				//拷贝数据到申请的内存
+				g_pfnRtlMoveMemory(AllocMem, OpCode, 0x20);
 
-				char* FuncName = pThunkName->Name;
-				fprintf(fp, "[*]Packer::EncryIAT--->OldFuncName：%s\n", FuncName);
+				//修改保护属性
+				DWORD dwProtect = 0;
+				g_pfnVirtualProtect(FirstThunk, 4, PAGE_EXECUTE_READWRITE, &dwProtect);
+				//把获取到的加密函数地址填充在导入地址表里面
+				*(FirstThunk) = (DWORD)AllocMem;
+				g_pfnVirtualProtect(FirstThunk, 4, dwProtect, &dwProtect);
 
-				for (DWORD i = 0; i < strlen(FuncName); i++)
-					FuncName[i] ^= 0x234;
-				fprintf(fp, "[*]Packer::EncryIAT--->NewFuncName：%s\n", FuncName);
-
-				*FuncAddr = *FuncAddr ^ 0x345;
-				//*(PDWORD)((DWORD)lpBaseAddress + pFirsrThunk->u1.Function) = TmpFuncAddr;
-				fprintf(fp, "[*]Packer::EncryIAT--->NewFuncAddr：%x\n", *FuncAddr);
-
-				*Hint = *Hint ^ 0x456;
-				fprintf(fp, "[*]Packer::EncryIAT--->NewHint ：%x\n", *Hint);
-				//*(PWORD)((DWORD)lpBaseAddress + pThunkName->Hint) = TmpHint;
+				++FirstThunk;
+				++pThunk;
 			}
-			pFirsrThunk++;
 		}
-		ImportTable++;
+		++pImportTable;
 	}
-	fclose(fp);
+	//fclose(fp);
 }
 
 PIMAGE_OPTIONAL_HEADER GetOptionHeader(LPBYTE lpBaseAddress)
@@ -412,15 +455,7 @@ PIMAGE_NT_HEADERS GetNtHeader(LPBYTE lpBaseAddress)
 	PIMAGE_DOS_HEADER pImageDosHeader = (PIMAGE_DOS_HEADER)lpBaseAddress;
 	return PIMAGE_NT_HEADERS((DWORD)lpBaseAddress + pImageDosHeader->e_lfanew);
 }
-//void RecordDataDir(DWORD IATNewSectionBase, DWORD IATNewSectionSize)
-//{
-//	DWORD dwOldProtect = 0;
-//	LPBYTE lpBaseAddress = (LPBYTE)g_pfnGetModuleHandleA(NULL);
-//	g_pfnVirtualProtect(&GetOptionHeader(lpBaseAddress)->DataDirectory[1], 0x8, PAGE_EXECUTE_READWRITE, &dwOldProtect);
-//	GetOptionHeader(lpBaseAddress)->DataDirectory[1].VirtualAddress = IATNewSectionBase;
-//	GetOptionHeader(lpBaseAddress)->DataDirectory[1].Size = IATNewSectionSize;
-//	g_pfnVirtualProtect(&GetOptionHeader(lpBaseAddress)->DataDirectory[1], 0x8, dwOldProtect, &dwOldProtect);
-//}
+
 
 
 //************************************************************
@@ -495,225 +530,7 @@ void DecryptCodeSeg(DWORD XorKey)
 	g_pfnVirtualProtect(lpCodeBase, g_ShellData.dwCodeSize, dwOldProtect, &dwOldProtect);
 }
 
-//************************************************************
-//CheckDebugByNtQueryInformationProcess_ProcessDebugPort:利用NtQueryInformationProcess进行反调试
-//ChildFunc:NULL
-//原理：NtQueryInformationProcess是没有公开的Ntdll的函数，通过设置第二个参数的类型，然后得到第三个参数的值
-//判断该值是否为0，如果为0，说明没有被调试
-//************************************************************
-BOOL CheckDebugByNtQueryInformationProcess_ProcessDebugPort()
-{
 
-	int debugPort = 0;
-	HMODULE hModule = LoadLibrary("Ntdll.dll");
-	NtQueryInformationProcessPtr NtQueryInformationProcess = (NtQueryInformationProcessPtr)GetProcAddress(hModule, "NtQueryInformationProcess");
-	NtQueryInformationProcess(GetCurrentProcess(), ProcessDebugPort, &debugPort, sizeof(debugPort), NULL);
-	return debugPort != 0;
-}
-
-//************************************************************
-//CheckDebugByNtQueryInformationProcess_ProcessDebugObjectHandle:利用NtQueryInformationProcess进行反调试
-//ChildFunc:NULL
-//原理：NtQueryInformationProcess是没有公开的Ntdll的函数，通过设置第二个参数的类型，然后得到第三个参数的值
-//判断该值是否为0，如果为0，说明没有被调试
-//************************************************************
-BOOL CheckDebugByNtQueryInformationProcess_ProcessDebugObjectHandle()
-{
-	HANDLE hdebugObject = NULL;
-	HMODULE hModule = LoadLibrary("Ntdll.dll");
-	NtQueryInformationProcessPtr NtQueryInformationProcess = (NtQueryInformationProcessPtr)GetProcAddress(hModule, "NtQueryInformationProcess");
-	NtQueryInformationProcess(GetCurrentProcess(), ProcessDebugObjectHandle, &hdebugObject, sizeof(hdebugObject), NULL);
-	return hdebugObject != NULL;
-}
-
-//************************************************************
-// CheckDebugByBeingDebugged:通过BeingDebugged成员进行反调试，如果处于调试状态返回True
-// ChildFunc：NULL
-//************************************************************
-bool CheckDebugByBeingDebugged()   //bool是一个字节，BOOL是四个字节
-{
-	bool BeingDugged = false;
-	__asm
-	{
-		mov eax, DWORD ptr fs : [0x30];     //获取peb
-		mov al, byte ptr ds : [eax + 0x02];   //获取peb.beingdugged
-		mov BeingDugged, al;                //如果被调试返回非0
-	}
-	return BeingDugged;
-}
-
-//************************************************************
-//CheckDebugByDbgWindow:检测windows标题进行反调试
-//ChildFunc:Mystricmp
-//************************************************************
-BOOL CheckDebugByDbgWindow()
-{
-	DWORD ret = 0;
-	PROCESSENTRY32 pe32;
-	pe32.dwSize = sizeof(pe32);
-	HMODULE hModule = g_pfnLoadLibraryA("kernel32.dll");
-	MyCreateToolhelp32Snapshot CreateToolhelp32Snapshot = (MyCreateToolhelp32Snapshot)g_pfnGetProcAddress(hModule, "CreateToolhelp32Snapshot");
-	HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	if (hProcessSnap == INVALID_HANDLE_VALUE)
-	{
-		return FALSE;
-	}
-	MyProcess32First  Process32First = (MyProcess32First)g_pfnGetProcAddress(hModule, "Process32First");
-	BOOL bMore = Process32First(hProcessSnap, &pe32);
-	while (bMore)
-	{
-		if (Mystricmp(pe32.szExeFile, "OllyDBG.EXE") || Mystricmp(pe32.szExeFile, "OllyICE.exe") || Mystricmp(pe32.szExeFile, "x64_dbg.exe")  || Mystricmp(pe32.szExeFile, "windbg.exe") || Mystricmp(pe32.szExeFile, "ImmunityDebugger.exe") )
-		{
-			return TRUE;
-		}
-		bMore = Process32Next(hProcessSnap, &pe32);
-	}
-	CloseHandle(hProcessSnap);
-	return FALSE;
-}
-
-
-BOOL Mystricmp(char str1[], const char str2[])
-{
-	unsigned char chr1, chr2;
-	int i = 0;
-	while (1)
-	{
-		chr1 = (str1[i] >= 'a' && str1[i] <= 'z') ? (str1[i] - 32) : str1[i];
-		chr2 = (str2[i] >= 'a' && str2[i] <= 'z') ? (str2[i] - 32) : str2[i];
-		i++;
-
-		if (chr1 != chr2)
-			break;
-		if (chr1 == '\0' || chr2 == '\0')
-			break;
-	}
-	if (chr1 > chr2)
-		return FALSE;
-	else if (chr1 == chr2)
-		return TRUE;
-	else if (chr1 < chr2)
-		return FALSE;
-}
-
-
-//************************************************************
-//CheckDebugBy0xCC()：通过全镜像搜索0xCC来判断是否下软件断点
-//ChildFunc：NULL
-//************************************************************
-BOOL CheckDebugBy0xCC()
-{
-
-	DWORD dwBaseImage = (DWORD)GetModuleHandle(NULL);
-
-	PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)dwBaseImage;;
-	PIMAGE_NT_HEADERS32 pNtHeaders = (PIMAGE_NT_HEADERS32)((DWORD)pDosHeader + pDosHeader->e_lfanew);;
-	PIMAGE_SECTION_HEADER pSectionHeader = (PIMAGE_SECTION_HEADER)((DWORD)pNtHeaders + sizeof(pNtHeaders->Signature) + sizeof(IMAGE_FILE_HEADER) +
-		(WORD)pNtHeaders->FileHeader.SizeOfOptionalHeader);
-
-	DWORD dwAddr = pSectionHeader->VirtualAddress + dwBaseImage;
-	DWORD dwCodeSize = pSectionHeader->SizeOfRawData;
-	BOOL Found = FALSE;
-	__asm
-	{
-		cld
-		mov     edi, dwAddr
-		mov     ecx, dwCodeSize
-		mov     al, 0CCH
-		repne   scasb      //扫描比较
-		jnz     NotFound
-		mov Found, 1
-		NotFound:
-	}
-	return Found;
-}
-
-
-//************************************************************
-//CheckDebugByHardBreakpoint()：检测线程环境上下文结构中的Dr0-Dr3四个寄存器
-//ChildFunc:NULL
-//************************************************************
-BOOL CheckDebugByHardBreakpoint()
-{
-	CONTEXT context;
-	HANDLE hThread = GetCurrentThread();
-	context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-	GetThreadContext(hThread, &context);
-	if (context.Dr0 != 0 || context.Dr1 != 0 || context.Dr2 != 0 || context.Dr3 != 0)
-	{
-		return TRUE;
-	}
-	return FALSE;
-}
-
-//************************************************************
-//CheckVMWareByIn()：通过in特殊权限指令检测VM
-//ChildFunc:NULL
-//************************************************************
-BOOL CheckVMWareByIn()
-{
-	bool bRes = true;
-	__try
-	{
-		__asm
-		{
-			push   edx
-			push   ecx
-			push   ebx
-			mov    eax, 'VMXh'
-			mov    ebx, 0
-			mov    ecx, 10
-			mov    edx, 'VX'
-			in     eax, dx
-			cmp    ebx, 'VMXh'
-			setz[bRes]   //setz意思是将zf标志位的值传入bRes
-			pop    ebx
-			pop    ecx
-			pop    edx
-		}
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		bRes = false;
-	}
-	return bRes;
-}
-
-//************************************************************
-//CheckVMWareByCpuid()：通过Cpuid特殊权限指令检测VM
-//ChildFunc:NULL
-//mov eax, 1
-//cpuid
-//执行完成后，处理器签名放在EAX中，功能位及其它的内容分别放在EBX、ECX和EDX中。
-//将EAX置为1，运行CPUID指令后获取ECX中的值并判断。
-//http://www.52bug.cn/cracktool/5843.html
-//************************************************************
-BOOL CheckVMWareByCpuid()
-{
-	DWORD dw_ecx;
-	bool bFlag = true;
-	_asm
-	{
-		pushad;
-		pushfd;
-		mov eax, 1;             //传入功能号
-		cpuid;
-		mov dw_ecx, ecx;        //功能位放置于ecx
-		and dw_ecx, 0x80000000; //取最高位
-		test ecx, ecx;
-		setz[bFlag];
-		popfd;
-		popad;
-	}
-	if (bFlag)
-	{
-		return FALSE;
-	}
-	else
-	{
-		return TRUE;
-	}
-}
 
 void RecReloc()
 {

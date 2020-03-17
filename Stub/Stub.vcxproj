@@ -121,6 +121,7 @@
     <ClInclude Include="Stub.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Anti.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="Stub.cpp" />
   </ItemGroup>

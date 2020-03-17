@@ -31,6 +31,9 @@ typedef struct _StubConf
 
 	DWORD dwDataDir[20][2];  //数据目录表的RVA和Size	
 	DWORD dwNumOfDataDir;	//数据目录表的个数
+
+	DWORD dwWeiZaoIATVirtualAddress;
+	DWORD dwWeiZaoIATSize;
 }StubConf;
 
 struct StubInfo

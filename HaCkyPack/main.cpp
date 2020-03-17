@@ -27,6 +27,8 @@ int main()
 
 
 
+
+
 	//Step4:获取Stub的数据并填充原始PE的PE数据
 	BOOL e = packer.GetStubInfo(lpNewStubBaseAddr, &stubinfo);
 
@@ -50,13 +52,34 @@ int main()
 	const char NewSectionName[MAX_PATH] = ".Hacky";
 	LPBYTE lpFinalBuf = NULL;
 	DWORD dwFinalBufSize = 0;
-	DWORD dwNewSectionSize = packer.AddNewSection(packer.lpMemBuf, packer.dwImageSize, NewSectionName, lpNewStubBaseAddr, dwStubImageSize,lpFinalBuf,dwFinalBufSize);
+	DWORD dwNewSectionSize = packer.AddNewSection(packer.lpMemBuf, 
+		packer.dwImageSize, 
+		NewSectionName, 
+		lpNewStubBaseAddr, 
+		dwStubImageSize,
+		lpFinalBuf,
+		dwFinalBufSize);
 
 
 	
-
 	//Step6:加密IAT表
+	//现在需要解决的问题是这样的，
+	//1. 需要定位到合并之后的Stub.dll内存起始地址，通过.HaCky节区VirtualAddress来获取
+	//2. 获取了Stub.dll内存起始地址，定位到导入表，获取VirtualAddress和Size
+	//3. 整个复制一遍，伪造这样一个导入表，记住VirtualAddress和Size需要导出
+	//4. 在恢复的时候先链接到伪造的导入表，这样IDA显示的就是伪造的dll的导入表
+	//5. 在解密的时候，一定需要将原来的导入表的VirtualAddress和Size写回(这个通过交互函数解决)
+
+
+	//1. 需要定位到合并之后的Stub.dll内存起始地址
+	//DWORD dwStubBaseAddress = 0;
+	//BOOL aa = packer.GetStubBaseAddr(lpFinalBuf, &dwStubBaseAddress);
+	//4. 加密整个原始PE文件IAT表
 	//BOOL i = packer.EncryIAT(lpFinalBuf);
+
+
+
+
 
 	//清空IAT表数据
 	BOOL j = packer.ClearDataDir(lpFinalBuf, &stubinfo);
@@ -71,6 +94,8 @@ int main()
 	//项目太大了，要严格把握每一步的结构。
 	//************************************************************
 
+
+	//关闭ADSL
 	packer.GetOptionHeader(lpFinalBuf)->DllCharacteristics &= (~0x40);
 
 	//Step9:保存文件

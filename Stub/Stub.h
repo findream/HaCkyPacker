@@ -37,6 +37,9 @@ typedef struct _SHELL_DATA
 	DWORD dwDataDir[20][2];  //数据目录表的RVA和Size	
 	DWORD dwNumOfDataDir;	//数据目录表的个数
 
+	DWORD dwWeiZaoIATVirtualAddress;
+	DWORD dwWeiZaoIATSize;
+
 }SHELL_DATA, *PSHELL_DATA;
 
 //在头文件中定义必要的Win32函数指针
@@ -48,6 +51,7 @@ typedef LPVOID(WINAPI *fnVirtualAlloc)(_In_opt_ LPVOID lpAddress, _In_ SIZE_T dw
 typedef void(WINAPI *fnExitProcess)(_In_ UINT uExitCode);
 typedef int(WINAPI *fnMessageBox)(HWND hWnd, LPSTR lpText, LPSTR lpCaption, UINT uType);
 typedef HMODULE(WINAPI *fnGetMoudleHandleA)(_In_ LPCWSTR lpMoudleName);
+typedef VOID(WINAPI *fnRtlMoveMemory)(_Out_  VOID UNALIGNED *Destination,_In_ const VOID UNALIGNED *Source,_In_ SIZE_T Length);
 enum PROCESSINFOCLASS
 {
 	ProcessBasicInformation = 0,
@@ -87,15 +91,29 @@ typedef NTSTATUS(WINAPI *NtQueryInformationProcessPtr)(
 	ULONG processInformationLength,
 	PULONG returnLength);
 
-typedef HANDLE(WINAPI *MyCreateToolhelp32Snapshot)(
+typedef HANDLE(WINAPI *pfnCreateToolhelp32Snapshot)(
 	DWORD dwFlags,
-	DWORD th32ProcessID
-	);
+	DWORD th32ProcessID);
 
-typedef BOOL(WINAPI*MyProcess32First)(
+typedef BOOL(WINAPI *pfnProcess32First)(
 	HANDLE hSnapshot,
-	LPPROCESSENTRY32 lppe
-);
+	LPPROCESSENTRY32 lppe);
+
+typedef HANDLE(WINAPI *pfnGetCurrentProcess)();
+
+typedef BOOL(WINAPI *pfnProcess32Next)(
+	HANDLE hSnapshot,
+	LPPROCESSENTRY32 lppe);
+
+typedef BOOL(WINAPI *pfnCloseHandle)(
+	_In_ _Post_ptr_invalid_ HANDLE hObject);
+
+typedef HANDLE(WINAPI *pfnGetCurrentThread)();
+
+typedef BOOL(WINAPI *pfnGetThreadContext)(
+	_In_ HANDLE hThread,
+	_Inout_ LPCONTEXT lpContext);
+
 
 
 //非API函数

@@ -65,7 +65,16 @@ public:
 	DWORD MyGetProcAddress(HMODULE hKernel32, const char* FuncName);
 
 	BOOL EncryIAT(LPBYTE lpNewStubBaseAddr);
-	//BOOL ClearDataDir(LPBYTE lpFinalBuf, StubInfo *stubinfo);
+	BOOL GetStubBaseAddr(LPBYTE lpBaseAddress,
+		DWORD *dwStubBaseAddress);
+	BOOL GetStubIATInfo(DWORD dwStubBaseAddress, 
+		DWORD *dwStubiDateVirtualSize,
+		DWORD *dwStubiDateVirtualAddress,
+		DWORD *dwStubiDateSizeOfRawData,
+		DWORD *dwStubiDatePointerToRawData);
+	BOOL CpyStubIAT(LPBYTE lpFinalBuf,DWORD dwFinalBufSize, DWORD dwStubBaseAddress, DWORD dwStubIATVirtualAddress, DWORD dwStubIATSize, DWORD *WeiZaoStubIATVirtualAddress);
+	BOOL CatWeiIAT(LPBYTE lpFinalBuf,DWORD dwWeiZaoStubIATVirtualAddress,DWORD dwStubIATSize);
+
 	BOOL ClearDataDir(LPBYTE pFileData, StubInfo *stubinfo);
 	BOOL GetStubInfo(LPBYTE	lpNewStubBaseAddr, StubInfo *stubinfo);
 	PIMAGE_NT_HEADERS GetNtHeader(LPBYTE lpBaseAddress);

@@ -321,7 +321,8 @@ BOOL Packer::EncryCodeSeg(DWORD XorCode)
 //	DWORD Characteristics;
 //} IMAGE_SECTION_HEADER, *PIMAGE_SECTION_HEADER;
 //************************************************************
-DWORD Packer::AddNewSection(LPBYTE lpOldPEMemBuf,DWORD dwOldPEImageSize,
+DWORD Packer::AddNewSection(LPBYTE lpOldPEMemBuf,
+	DWORD dwOldPEImageSize,
 	const char* szNewSectionName,
 	LPBYTE lpNewSection,DWORD NewSectionSize,
 	LPBYTE& pFinalBuf,DWORD& dwSizeOfFinalBuf)
@@ -701,6 +702,8 @@ BOOL MyStrcmp(char* src,const char* dst)
 }
 
 
+
+
 //************************************************************
 //EncryIAT:加密IAT的数据
 //ChildFunc:NULL
@@ -740,9 +743,7 @@ BOOL MyStrcmp(char* src,const char* dst)
 //************************************************************
 BOOL Packer::EncryIAT(LPBYTE lpBaseAddress)
 {
-	//Step1:重新转储一份IAT表
-	//Step2:加密IAT
-	//Step3：将转储的IAT连接到VirtualAddress和Size
+
 	fp = fopen("HackyPackLog.log", "a");
 
 	PIMAGE_DOS_HEADER pDosHeader = 
@@ -826,16 +827,124 @@ BOOL Packer::EncryIAT(LPBYTE lpBaseAddress)
 	return TRUE;
 }
 
+BOOL Packer::GetStubBaseAddr(LPBYTE lpBaseAddress,DWORD *dwStubBaseAddress)
+{
+	PIMAGE_NT_HEADERS pNtHeader = GetNtHeader(lpBaseAddress);
+	PIMAGE_SECTION_HEADER pSectionHeader = IMAGE_FIRST_SECTION(pNtHeader);
+	while (pSectionHeader->Name)
+	{
+		char* SectionName = (char*)pSectionHeader->Name;
+		if (strcmp(SectionName, ".Hacky") == 0)
+		{
+			*dwStubBaseAddress = (DWORD)lpBaseAddress+pSectionHeader->VirtualAddress;
+			return TRUE;
+		}
+		pSectionHeader++;
+	}
+	return FALSE;
+}
 
-//BOOL Packer::ClearDataDir(LPBYTE lpFinalBuf, StubInfo *stubinfo)
-//{
-//	//获取之后先保存，在修改
-//	stubinfo->pStubConf->IATNewSectionBase = GetOptionHeader(lpFinalBuf)->DataDirectory[1].VirtualAddress;
-//	stubinfo->pStubConf->IATNewSectionSize = GetOptionHeader(lpFinalBuf)->DataDirectory[1].Size;
-//	GetOptionHeader(lpFinalBuf)->DataDirectory[1].VirtualAddress = 0;
-//	GetOptionHeader(lpFinalBuf)->DataDirectory[1].Size = 0;
-//	return TRUE;
-//}
+BOOL Packer::GetStubIATInfo(DWORD dwStubBaseAddress,
+	DWORD *dwStubiDateVirtualSize,
+	DWORD *dwStubiDateVirtualAddress,
+	DWORD *dwStubiDateSizeOfRawData,
+	DWORD *dwStubiDatePointerToRawData)
+{
+	PIMAGE_DOS_HEADER pImageDosHeader = (PIMAGE_DOS_HEADER)dwStubBaseAddress;
+	if (pImageDosHeader->e_magic != IMAGE_DOS_SIGNATURE)
+		return FALSE;
+
+	//DWORD dwNumOfRvaAndSize = GetOptionHeader((LPBYTE)dwStubBaseAddress)->NumberOfRvaAndSizes;
+	//*dwStubIATVirtualAddress = 
+		//GetOptionHeader((LPBYTE)dwStubBaseAddress)->DataDirectory[1].VirtualAddress;
+	
+	//*dwStubIATSize =
+		//GetOptionHeader((LPBYTE)dwStubBaseAddress)->DataDirectory[1].Size;
+
+	PIMAGE_NT_HEADERS pNtHeader = GetNtHeader((LPBYTE)dwStubBaseAddress);
+	PIMAGE_SECTION_HEADER pSectionHeader = IMAGE_FIRST_SECTION(pNtHeader);
+	while (pSectionHeader->Name)
+	{
+		char* SectionName = (char*)(pSectionHeader->Name);
+		if (strcmp(SectionName, ".idata") == 0)
+		{
+			*dwStubiDateVirtualSize =  pSectionHeader->Misc.VirtualSize;
+			*dwStubiDateVirtualAddress = pSectionHeader->VirtualAddress;
+			*dwStubiDateSizeOfRawData = pSectionHeader->SizeOfRawData;
+			*dwStubiDatePointerToRawData = pSectionHeader->PointerToRawData;
+			return TRUE;
+		}
+		pSectionHeader++;
+	}
+	return FALSE;
+}
+
+BOOL Packer::CpyStubIAT(LPBYTE lpFinalBuf, 
+	DWORD dwFinalBufSize,
+	DWORD dwStubBaseAddress,
+	DWORD dwStubIATVirtualAddress, 
+	DWORD dwStubIATSize,
+	DWORD *WeiZaoStubIATVirtualAddress)
+{
+
+
+
+
+	PIMAGE_NT_HEADERS pNtHeader = GetNtHeader(lpFinalBuf);
+	PIMAGE_SECTION_HEADER pSectionHeader = IMAGE_FIRST_SECTION(pNtHeader);
+	while (pSectionHeader->Name)
+	{
+		char* SectionName = (char*)pSectionHeader->Name;
+		if (strcmp(SectionName, ".idata") == 0)
+		{
+			pSectionHeader->Misc.VirtualSize = dwStubIATSize;
+			pSectionHeader->VirtualAddress = (DWORD)(lpFinalBuf + dwFinalBufSize);
+			pSectionHeader->SizeOfRawData = dwStubIATSize;
+			pSectionHeader->PointerToRawData = (DWORD)(lpFinalBuf + dwFinalBufSize);
+			return TRUE;
+		}
+		pSectionHeader++;
+	}
+
+	//导出伪造的IAT地址
+	StubInfo stubinfo = { 0 };
+	//此处使用原生的GetProcAddress函数会发生17?的错误
+	//所以我们自己通过导出表模拟GetProcAddress
+	stubinfo.pStubConf = 
+		(StubConf*)MyGetProcAddress((HMODULE)dwStubBaseAddress, "g_ShellData");
+
+	stubinfo.pStubConf->dwWeiZaoIATVirtualAddress = 
+		*WeiZaoStubIATVirtualAddress;
+	stubinfo.pStubConf->dwWeiZaoIATSize = dwStubIATSize;
+	return TRUE;
+	
+}
+
+BOOL Packer::CatWeiIAT(LPBYTE lpFinalBuf, DWORD dwWeiZaoStubIATVirtualAddress, DWORD dwStubIATSize)
+{
+	//GetOptionHeader(lpFinalBuf)->DataDirectory[1].VirtualAddress = 
+		//dwWeiZaoStubIATVirtualAddress;
+
+	//GetOptionHeader(lpFinalBuf)->DataDirectory[1].Size = dwStubIATSize;
+
+	PIMAGE_NT_HEADERS pNtHeader = GetNtHeader(lpFinalBuf);
+	PIMAGE_SECTION_HEADER pSectionHeader = IMAGE_FIRST_SECTION(pNtHeader);
+	while (pSectionHeader->Name)
+	{
+		char* SectionName = (char*)pSectionHeader->Name;
+		if (strcmp(SectionName, ".idata") == 0)
+		{
+			pSectionHeader->Misc.VirtualSize = dwStubIATSize;
+			pSectionHeader->VirtualAddress = dwWeiZaoStubIATVirtualAddress;
+			pSectionHeader->SizeOfRawData = dwStubIATSize;
+			pSectionHeader->PointerToRawData = dwWeiZaoStubIATVirtualAddress;
+			return TRUE;
+		}
+		pSectionHeader++;
+	}
+
+	return FALSE;
+}
 
 //************************************************************
 //ClearDataDir：清空所有的DataDirectory
