@@ -77,7 +77,14 @@
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
       <SupportJustMyCode>false</SupportJustMyCode>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
     </ClCompile>
+    <Link>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+    </Link>
+    <Link>
+      <FixedBaseAddress>true</FixedBaseAddress>
+    </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>

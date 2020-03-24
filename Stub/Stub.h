@@ -4,6 +4,10 @@
 #include <tlhelp32.h>
 #pragma warning(disable:4996)
 
+#define KEYLENGTH  0x00800000
+#define ENCRYPT_ALGORITHM CALG_RC4
+#define ENCRYPT_BLOCK_SIZE 8
+
 
 //需要导出的SHELL_DATA结构体，里面包含着与PE相关的重要成员，用于与Pack部分的交换
 typedef struct _SHELL_DATA
@@ -32,7 +36,7 @@ typedef struct _SHELL_DATA
 	DWORD                   IATNewSectionBase;   //lpFinalBuf的IAT
 	DWORD                   IATNewSectionSize;
 
-	DWORD                   dwXorKey;				//解密KEY
+	char                   dwAESKey[8];				//解密KEY
 
 	DWORD dwDataDir[20][2];  //数据目录表的RVA和Size	
 	DWORD dwNumOfDataDir;	//数据目录表的个数
@@ -43,15 +47,35 @@ typedef struct _SHELL_DATA
 }SHELL_DATA, *PSHELL_DATA;
 
 //在头文件中定义必要的Win32函数指针
-typedef DWORD(WINAPI *fnGetProcAddress)(_In_ HMODULE hModule, _In_ LPCSTR lpProcName);
+typedef DWORD(WINAPI *fnGetProcAddress)(
+	_In_ HMODULE hModule,
+	_In_ LPCSTR lpProcName);
+
 typedef HMODULE(WINAPI *fnLoadLibraryA)(_In_ LPCSTR lpLibFileName);
+
 typedef HMODULE(WINAPI *fnGetModuleHandleA)(_In_opt_ LPCSTR lpModuleName);
-typedef BOOL(WINAPI *fnVirtualProtect)(_In_ LPVOID lpAddress, _In_ SIZE_T dwSize, _In_ DWORD flNewProtect, _Out_ PDWORD lpflOldProtect);
-typedef LPVOID(WINAPI *fnVirtualAlloc)(_In_opt_ LPVOID lpAddress, _In_ SIZE_T dwSize, _In_ DWORD flAllocationType, _In_ DWORD flProtect);
+
+typedef BOOL(WINAPI *fnVirtualProtect)(_In_ LPVOID lpAddress, 
+	_In_ SIZE_T dwSize,
+	_In_ DWORD flNewProtect, 
+	_Out_ PDWORD lpflOldProtect);
+typedef LPVOID(WINAPI *fnVirtualAlloc)(_In_opt_ LPVOID lpAddress,
+	_In_ SIZE_T dwSize, 
+	_In_ DWORD flAllocationType,
+	_In_ DWORD flProtect);
 typedef void(WINAPI *fnExitProcess)(_In_ UINT uExitCode);
-typedef int(WINAPI *fnMessageBox)(HWND hWnd, LPSTR lpText, LPSTR lpCaption, UINT uType);
+
+typedef int(WINAPI *fnMessageBox)(HWND hWnd, 
+	LPSTR lpText,
+	LPSTR lpCaption, 
+	UINT uType);
+
 typedef HMODULE(WINAPI *fnGetMoudleHandleA)(_In_ LPCWSTR lpMoudleName);
-typedef VOID(WINAPI *fnRtlMoveMemory)(_Out_  VOID UNALIGNED *Destination,_In_ const VOID UNALIGNED *Source,_In_ SIZE_T Length);
+
+typedef VOID(WINAPI *fnRtlMoveMemory)(_Out_  VOID UNALIGNED *Destination,
+	_In_ const VOID UNALIGNED *Source,
+	_In_ SIZE_T Length);
+
 enum PROCESSINFOCLASS
 {
 	ProcessBasicInformation = 0,
@@ -114,6 +138,77 @@ typedef BOOL(WINAPI *pfnGetThreadContext)(
 	_In_ HANDLE hThread,
 	_Inout_ LPCONTEXT lpContext);
 
+typedef BOOL(WINAPI *pfnCryptAcquireContextA)(
+	_Out_       HCRYPTPROV  *phProv,
+	_In_opt_    LPCSTR    szContainer,
+	_In_opt_    LPCSTR    szProvider,
+	_In_        DWORD       dwProvType,
+	_In_        DWORD       dwFlags
+);
+
+typedef BOOL(WINAPI *pfnCryptCreateHash)(
+	_In_    HCRYPTPROV  hProv,
+	_In_    ALG_ID      Algid,
+	_In_    HCRYPTKEY   hKey,
+	_In_    DWORD       dwFlags,
+	_Out_   HCRYPTHASH  *phHash
+);
+
+typedef BOOL(WINAPI *pfnCryptHashData)(
+	_In_                    HCRYPTHASH  hHash,
+	_In_reads_bytes_(dwDataLen)  CONST BYTE  *pbData,
+	_In_                    DWORD   dwDataLen,
+	_In_                    DWORD   dwFlags
+);
+
+typedef BOOL(WINAPI *pfnCryptDeriveKey)(
+	_In_    HCRYPTPROV  hProv,
+	_In_    ALG_ID      Algid,
+	_In_    HCRYPTHASH  hBaseData,
+	_In_    DWORD       dwFlags,
+	_Out_   HCRYPTKEY   *phKey
+);
+
+typedef BOOL(WINAPI *pfnCryptDestroyHash)(
+	_In_    HCRYPTHASH  hHash
+);
+
+typedef HANDLE(WINAPI *pfnHeapCreate)(
+	_In_ DWORD flOptions,
+	_In_ SIZE_T dwInitialSize,
+	_In_ SIZE_T dwMaximumSize
+);
+
+typedef LPVOID(WINAPI *pfnHeapAlloc)(
+	_In_ HANDLE hHeap,
+	_In_ DWORD dwFlags,
+	_In_ SIZE_T dwBytes
+);
+
+typedef BOOL(WINAPI *pfnCryptDecrypt)(
+	_In_                                            HCRYPTKEY   hKey,
+	_In_                                            HCRYPTHASH  hHash,
+	_In_                                            BOOL        Final,
+	_In_                                            DWORD       dwFlags,
+	_Inout_updates_bytes_to_(*pdwDataLen, *pdwDataLen)   BYTE        *pbData,
+	_Inout_                                         DWORD       *pdwDataLen
+);
+
+
+typedef BOOL(WINAPI *pfnHeapFree)(
+	_Inout_ HANDLE hHeap,
+	_In_ DWORD dwFlags,
+	__drv_freesMem(Mem) _Frees_ptr_opt_ LPVOID lpMem
+);
+
+typedef BOOL(WINAPI *pfnCryptDestroyKey)(
+	_In_    HCRYPTKEY   hKey
+);
+
+typedef BOOL(WINAPI *pfnCryptReleaseContext)(
+	_In_    HCRYPTPROV  hProv,
+	_In_    DWORD       dwFlags
+);
 
 
 //非API函数
@@ -122,7 +217,7 @@ BOOL MyStrcmp(char* src, const char*dst);
 void InitWin32FunAddr();
 HMODULE GetKernel32BaseAddr();
 DWORD MyGetProcAddress();
-void DecryptCodeSeg(DWORD XorKey);
+void DecryptCodeSeg();
 BOOL CheckDebugByNtQueryInformationProcess_ProcessDebugPort();
 BOOL CheckDebugByDbgWindow();
 BOOL Mystricmp(char str1[], const char str2[]);
@@ -133,3 +228,9 @@ void  DecryptIAT();
 void RecoverDataDir();
 PIMAGE_OPTIONAL_HEADER GetOptionHeader(LPBYTE lpBaseAddress);
 PIMAGE_NT_HEADERS GetNtHeader(LPBYTE lpBaseAddress);
+void DecryKey(char* src, char* str);
+void Mystrcpy(char *s, char *t);
+void AntiDumpByImageSize();
+void AntiDumpByHideProcess();
+void AntiDumpByMemory();
+BOOL  FindString(LPBYTE lpBaseAddress, DWORD ImageSize);

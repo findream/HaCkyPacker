@@ -8,6 +8,10 @@
 #pragma comment(lib, "Dbghelp.lib")
 #pragma comment(lib, "Shlwapi")
 
+#define KEYLENGTH  0x00800000
+#define ENCRYPT_ALGORITHM CALG_RC4
+#define ENCRYPT_BLOCK_SIZE 8
+
 class Packer
 {
 public:
@@ -52,7 +56,7 @@ public:
 	BOOL IsLegalPE();
 	BOOL GetPEInfo(char* FilePath);
 	BOOL OpenFile(char* FilePath,DWORD *dwFileSize);
-	BOOL EncryCodeSeg(DWORD XorCode);
+	BOOL EncryCodeSeg(char* szPassword);
 	BOOL LoadStub(StubInfo *stubinfo);
 	DWORD AddNewSection(LPBYTE lpOldPEMemBuf, DWORD dwOldPEImageSize,const char* szNewSectionName,LPBYTE lpNewSection, DWORD NewSectionSize, LPBYTE& FinalBuf, DWORD& dwSizeOfFinalBuf);
 	PIMAGE_SECTION_HEADER GetLastSection(LPBYTE lpMemBuf);
@@ -78,5 +82,7 @@ public:
 	BOOL ClearDataDir(LPBYTE pFileData, StubInfo *stubinfo);
 	BOOL GetStubInfo(LPBYTE	lpNewStubBaseAddr, StubInfo *stubinfo);
 	PIMAGE_NT_HEADERS GetNtHeader(LPBYTE lpBaseAddress);
+	char* EncryKey(char* str);
+	BOOL  FindString(LPBYTE lpFinalBuf, DWORD Size);
 	
 };

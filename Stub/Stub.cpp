@@ -23,6 +23,14 @@ fnRtlMoveMemory     g_pfnRtlMoveMemory = NULL;
 //一些全局变量
 DWORD dwImageBase = 0;		//整个程序的镜像基址
 DWORD dwNewOEP = 0;		    //PE文件的OEP
+unsigned char data[94] = {
+	0x47, 0x9B, 0xF7, 0x91, 0xFE, 0x1A, 0xD5, 0x57, 0xEE, 0x12, 0x12, 0x12, 0x12, 0x91, 0x6F, 0xEE,
+	0x15, 0x65, 0x52, 0xD5, 0x57, 0xEA, 0x12, 0x12, 0x12, 0x12, 0x91, 0x6F, 0xEA, 0x2C, 0x65, 0x3E,
+	0x99, 0x57, 0x1E, 0x11, 0x57, 0xEE, 0x1D, 0xAC, 0x02, 0x99, 0x57, 0x02, 0x11, 0x57, 0xEA, 0x1D,
+	0xAC, 0x12, 0x2B, 0xD0, 0x67, 0x1D, 0x99, 0x57, 0x1A, 0x99, 0x47, 0xEE, 0x13, 0xD0, 0x99, 0x57,
+	0xEA, 0x16, 0x22, 0x9A, 0x10, 0x9F, 0x57, 0xEA, 0xED, 0x12, 0xF9, 0xDC, 0x9F, 0x57, 0xEE, 0xED,
+	0x12, 0xF9, 0xA8, 0x99, 0x57, 0x1A, 0x91, 0xD2, 0x15, 0xD4, 0x12, 0x12, 0xDB, 0xD1
+};
 
 
 //************************************************************
@@ -37,19 +45,57 @@ void Start()
 	InitWin32FunAddr();
 
 
+	//Step3:解密加密的字符串
+	LPBYTE lpBaseAddress = NULL;
+	DWORD TmpImageSize = 0;
+	LPBYTE TmplpBaseAddress = NULL;
+	lpBaseAddress = (LPBYTE)g_pfnGetModuleHandleA(NULL);
+	PIMAGE_DOS_HEADER pImageDosHeader = (PIMAGE_DOS_HEADER)lpBaseAddress;
+
+	PIMAGE_NT_HEADERS pImageNtHeaders =
+		(PIMAGE_NT_HEADERS)((DWORD)lpBaseAddress + pImageDosHeader->e_lfanew);  //
+
+	PIMAGE_SECTION_HEADER pSectionHeader = IMAGE_FIRST_SECTION(pImageNtHeaders);
+
+	while (pSectionHeader->Name)
+	{
+		char* SectionName = (char*)(pSectionHeader->Name);
+		if (MyStrcmp(SectionName, ".rdata"))
+		{
+			TmplpBaseAddress = (LPBYTE)(pSectionHeader->VirtualAddress + (DWORD)lpBaseAddress);
+			TmpImageSize = pSectionHeader->SizeOfRawData;
+			break;
+		}
+		pSectionHeader++;
+	}
+	
+
+
+
+
 	//Step2:恢复IAT数据表
 	RecoverDataDir();
 	
 	//Step3:填充IAT
-	//FixIAT();
+	FixIAT();
+
+	//AntiDump
+	AntiDumpByImageSize();
+	//AntiDumpByMemory();   //注意在vs2017编写的程序中容易出现奔溃
+
 
 	//Step2：加密IAT表
-	DecryptIAT();
+	//DecryptIAT();
 
 
 
 	//Step2:解密代码段
-	DecryptCodeSeg(g_ShellData.dwXorKey);
+	//需要解密KEY
+	DecryptCodeSeg();
+
+	FindString(TmplpBaseAddress, TmpImageSize);
+
+
 
 	//Step3:反调试
 	//if (CheckDebugByDbgWindow())
@@ -513,24 +559,249 @@ BOOL MyStrcmp(char* src, const char*dst)
 	return ret;
 }
 
+void Mystrcpy(char* s, char* t)
+{
+	for (int i = 0; i < 8; i++)
+	{
+		s[i] = t[i];
+	}
+	//do
+	//{
+	//	*s++ = *t++;
+	//} while (*t != '\0');
+}
 
 //************************************************************
 //DecryptCodeSeg:解密被加密的代码段
 //ChildFunc:NULL
 //************************************************************
-void DecryptCodeSeg(DWORD XorKey)
+void DecryptCodeSeg()
 {
+	char szPassword[8] = { 0 };
+	//DecryKey(szPassword,g_ShellData.dwAESKey);//"0EpqKsg";
+	char Table[] = "0123456789ABCDEFGEIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+	int  Size = 94;
+	DWORD Old = 0;
+	VirtualProtect(data, Size, PAGE_EXECUTE_READWRITE, &Old);
+	for (int i = 0; i < Size; i++)
+	{
+		data[i] ^= 0x12;
+	}
+
+	(*(void(*)(char*, char*,char*))&data)(szPassword, g_ShellData.dwAESKey, Table);
+	VirtualProtect(data, Size, Old, &Old);
+		
+	//获取常见的CSP-API地址
+	HMODULE hAdvapi32 = g_pfnLoadLibraryA("Advapi32.dll");
+	HMODULE hNtdll = g_pfnLoadLibraryA("ntdll.dll");
+	HMODULE hKerel32 = g_pfnLoadLibraryA("Kernel32.dll");
+	pfnCryptAcquireContextA  MyCryptAcquireContextA =
+		(pfnCryptAcquireContextA)g_pfnGetProcAddress(hAdvapi32,"CryptAcquireContextA");
+
+	pfnCryptCreateHash MyCryptCreateHash = 
+		(pfnCryptCreateHash)g_pfnGetProcAddress(hAdvapi32, "CryptCreateHash");
+
+	pfnCryptHashData MyCryptHashData = 
+		(pfnCryptHashData)g_pfnGetProcAddress(hAdvapi32, "CryptHashData");
+
+	pfnCryptDeriveKey MyCryptDeriveKey = 
+		(pfnCryptDeriveKey)g_pfnGetProcAddress(hAdvapi32, "CryptDeriveKey");
+
+	pfnCryptDestroyHash MyCryptDestroyHash = 
+		(pfnCryptDestroyHash)g_pfnGetProcAddress(hAdvapi32, "CryptDestroyHash");
+
+	pfnCryptDecrypt MyCryptDecrypt = 
+		(pfnCryptDecrypt)g_pfnGetProcAddress(hAdvapi32, "CryptDecrypt");
+
+	pfnCryptDestroyKey MyCryptDestroyKey = 
+		(pfnCryptDestroyKey)g_pfnGetProcAddress(hAdvapi32, "CryptDestroyKey");
+
+	pfnCryptReleaseContext MyCryptReleaseContext = 
+		(pfnCryptReleaseContext)g_pfnGetProcAddress(hAdvapi32, "CryptReleaseContext");
+
+	pfnHeapCreate MyHeapCreate = 
+		(pfnHeapCreate)g_pfnGetProcAddress(hKerel32, "HeapCreate");
+
+	pfnHeapAlloc MyHeapAlloc = 
+		(pfnHeapAlloc)g_pfnGetProcAddress(hKerel32, "HeapAlloc");
+
+	fnRtlMoveMemory MyRtlMoveMemory =
+		(fnRtlMoveMemory)g_pfnGetProcAddress(hNtdll, "RtlMoveMemory");
+
+	pfnHeapFree MyHeapFree = 
+		(pfnHeapFree)g_pfnGetProcAddress(hKerel32, "HeapFree");
+
+
+
 	DWORD i = 0;
 	LPBYTE lpCodeBase = (LPBYTE)(g_ShellData.dwCodeBase + g_ShellData.dwImageBase);
+	//以下是解密算法
+	HCRYPTPROV hCryptProv = NULL;
+	HCRYPTKEY hKey = NULL;
+	HCRYPTHASH hHash = NULL;
+	LPBYTE pbBuffer = NULL;
+	DWORD dwBlockLen = 0;
+	DWORD dwBufferLen = 0;
+	DWORD dwCount = 0;
+	if (MyCryptAcquireContextA(
+		&hCryptProv,
+		NULL,               //用户登陆名 NULL表示使用默认密钥容器，默认密钥容器名
+		NULL,
+		PROV_RSA_FULL,
+		0))
+	{
+	//	printf("A cryptographic provider has been acquired. \n");
+	}
+	else
+	{
+		if (MyCryptAcquireContextA(
+			&hCryptProv,
+			NULL,
+			NULL,
+			PROV_RSA_AES,
+			CRYPT_NEWKEYSET))//创建密钥容器
+		{
+			//创建密钥容器成功，并得到CSP句柄
+		//	printf("A new key container has been created.\n");
+		}
+		else
+		{
+		//	printf("Could not create a new key container.\n");
+		}
+	}
 
-	DWORD dwOldProtect = 0;
-	g_pfnVirtualProtect(lpCodeBase, g_ShellData.dwCodeSize, PAGE_EXECUTE_READWRITE, &dwOldProtect);
-	for (i = 0; i < g_ShellData.dwCodeSize; i++)
-		lpCodeBase[i] ^= XorKey;
-	g_pfnVirtualProtect(lpCodeBase, g_ShellData.dwCodeSize, dwOldProtect, &dwOldProtect);
+	// 创建一个会话密钥
+	if (MyCryptCreateHash(
+		hCryptProv,
+		CALG_MD5,
+		0,
+		0,
+		&hHash))
+	{
+	//	printf("A hash object has been created. \n");
+	}
+	else
+	{
+	//	printf("Error during CryptCreateHash!\n");
+	}
+	// 用输入的密码产生一个散列
+	if (MyCryptHashData(
+		hHash,
+		(BYTE *)szPassword,
+		7,
+		0))
+	{
+	//	printf("The password has been added to the hash. \n");
+	}
+	else
+	{
+		//printf("Error during CryptHashData. \n");
+	}
+
+	// 通过散列生成会话密钥
+	if (MyCryptDeriveKey(
+		hCryptProv,
+		ENCRYPT_ALGORITHM,
+		//CALG_AES_128,
+		hHash,
+		KEYLENGTH,
+		&hKey))
+	{
+	//	printf("An encryption key is derived from the password hash. \n");
+	}
+	else
+	{
+	//	printf("Error during CryptDeriveKey!\n");
+	}
+	MyCryptDestroyHash(hHash);
+	hHash = NULL;
+	// 因为加密算法是按ENCRYPT_BLOCK_SIZE 大小的块加密的，所以被加密的
+	// 数据长度必须是ENCRYPT_BLOCK_SIZE 的整数倍。下面计算一次加密的
+	// 数据长度。
+	dwBlockLen = 1000 - 1000 % ENCRYPT_BLOCK_SIZE;
+	if (ENCRYPT_BLOCK_SIZE > 1)
+		dwBufferLen = dwBlockLen + ENCRYPT_BLOCK_SIZE;
+	else
+		dwBufferLen = dwBlockLen;
+
+	//开辟空间，准备加密代码段
+	HANDLE hHeap = MyHeapCreate(HEAP_CREATE_ENABLE_EXECUTE, dwBufferLen, 0);
+	pbBuffer = (LPBYTE)MyHeapAlloc(hHeap, HEAP_ZERO_MEMORY, dwBufferLen);
+
+
+	// 加密数据
+	DWORD dwTmp1 = 0;
+	DWORD dwTmpCodeSize1 = g_ShellData.dwCodeSize;
+	BOOL bFinual1 = FALSE;
+
+	DWORD dwProtect = 0;
+	g_pfnVirtualProtect(lpCodeBase, dwTmpCodeSize1, PAGE_EXECUTE_READWRITE, &dwProtect);
+	do
+	{
+		//判断是否是最后一块
+		if (dwTmpCodeSize1 > dwBlockLen)
+		{
+			MyRtlMoveMemory(pbBuffer, (lpCodeBase + dwTmp1), dwBlockLen);
+			dwCount = dwBlockLen;
+			bFinual1 = FALSE;     //说明大于对齐大小，不是最后一块
+		}
+		else
+		{
+			MyRtlMoveMemory(pbBuffer, (lpCodeBase + dwTmp1), dwTmpCodeSize1);
+			dwCount = dwTmpCodeSize1;
+			bFinual1 = TRUE;      //说明小于等于对齐大小，是最后一块
+		}
+
+		if (!MyCryptDecrypt(
+			hKey,           //密钥
+			0,              //如果数据同时进行散列和加密，这里传入一个散列对象
+			bFinual1,        //如果是最后一个被加密的块，输入TRUE.如果不是输入FALSE
+			0,              //保留
+			pbBuffer,       //输入被加密数据，输出加密后的数据
+			&dwCount))       //输入被加密数据实际长度，输出加密后数据长度
+		{
+		//	printf("Error during CryptEncrypt. \n");
+		}
+
+		MyRtlMoveMemory(lpCodeBase + dwTmp1, pbBuffer, dwCount);
+		dwTmp1 += dwCount;
+		dwTmpCodeSize1 -= dwCount;
+	} while (dwTmpCodeSize1 > 0);
+
+	g_pfnVirtualProtect(lpCodeBase, dwTmpCodeSize1, dwProtect, &dwProtect);
+
+	if (pbBuffer
+		&&hKey
+		&&hCryptProv)
+	{
+		MyHeapFree(hHeap, HEAP_NO_SERIALIZE, pbBuffer);
+		MyCryptDestroyKey(hKey);
+		//CryptDestroyHash(hHash);
+		MyCryptReleaseContext(hCryptProv, 0);
+	}
+
+
 }
-
-
+//************************************************************
+//DecryKey：解密Key
+//ChildFunc：NULL
+//************************************************************
+void DecryKey(char* src,char* str)
+{
+	char Table[] = "0123456789ABCDEFGEIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+	//char input[8] = { 0 };
+	for (DWORD i = 0; i < 8; i++)
+	{
+		for (DWORD j = 0; j < 63; j++)
+		{
+			if (str[i] == Table[j])
+			{
+				src[i] = j + 48;
+			}
+		}
+	}
+	src[7] = '\0';
+}
 
 void RecReloc()
 {
@@ -574,4 +845,52 @@ void RecReloc()
 		//2.4修复下一个区段
 		pPEReloc = (PIMAGE_BASE_RELOCATION)((DWORD)pPEReloc + pPEReloc->SizeOfBlock);
 	}
+}
+
+
+//恢复加密的字符串
+BOOL  FindString(LPBYTE lpBaseAddress, DWORD ImageSize)
+{
+	HMODULE hKerel32 = g_pfnLoadLibraryA("Kernel32.dll");
+	pfnHeapCreate MyHeapCreate =
+		(pfnHeapCreate)g_pfnGetProcAddress(hKerel32, "HeapCreate");
+
+	pfnHeapAlloc MyHeapAlloc =
+		(pfnHeapAlloc)g_pfnGetProcAddress(hKerel32, "HeapAlloc");
+
+	pfnHeapFree MyHeapFree =
+		(pfnHeapFree)g_pfnGetProcAddress(hKerel32, "HeapFree");
+
+	DWORD dwOld = 0;
+	g_pfnVirtualProtect(lpBaseAddress, ImageSize, PAGE_EXECUTE_READWRITE, &dwOld);
+	DWORD i = 0;
+	do
+	{
+		DWORD Tmp = 0;
+		//char String[260] = { 0 };
+		HANDLE hHeap = MyHeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 260, 0);
+		char* String = (char*)MyHeapAlloc(hHeap, HEAP_ZERO_MEMORY, 260);
+		//如果连续四个字符都是可打印字符，则符合要求
+		if ((lpBaseAddress[i] >= 0x20 && lpBaseAddress[i] <= 0x7E)
+			&& (lpBaseAddress[i + 1] >= 0x20 && lpBaseAddress[i + 1] <= 0x7E)
+			&& (lpBaseAddress[i + 2] >= 0x20 && lpBaseAddress[i + 2] <= 0x7E)
+			&& (lpBaseAddress[i + 3] >= 0x20 && lpBaseAddress[i + 3] <= 0x7E))
+		{
+			//符合要求则记录一下出现的间隔，以便后期加上
+			//此处应该循环一下
+			while (lpBaseAddress[i + Tmp] >= 0x20 && lpBaseAddress[i + Tmp] <= 0x7E)
+			{
+				String[Tmp] = lpBaseAddress[i + Tmp] ^ 0x123;
+				lpBaseAddress[i + Tmp] = String[Tmp];
+				Tmp++;
+			}
+			String[Tmp + 1] = '\0';
+			//	fprintf(fp, "[*]Packer::FindString--->NewString:%s\n", String);
+
+		}
+		MyHeapFree(hHeap, HEAP_NO_SERIALIZE, String);
+		i += (Tmp + 1);
+	} while (i < ImageSize);
+	g_pfnVirtualProtect(lpBaseAddress, ImageSize, dwOld, &dwOld);
+	return TRUE;
 }

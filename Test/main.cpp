@@ -5,78 +5,52 @@
 #pragma warning(disable:4996)
 
 
-void TakeInstruc()
+void FindString();
+int main()
 {
-	//采用改变指令流来加花
-	DWORD p;
-	__asm {
-		call	l1;
-	l1:
-		pop		eax;
-		mov		p, eax;			//确定当前程序段的位置
-		call	f1;
-		_EMIT	0xEA;			//花指令，此处永远不会执行到
-		jmp		l2;				//call结束以后执行到这里
-	f1:							
-		pop ebx;
-		inc ebx;
-		push ebx;
-		mov eax, 0x1234567;
-		ret;
-	l2:
-		call f2;				//用ret指令实现跳转
-		mov ebx, 0x1234567;	    //这里永远不会执行到
-		jmp e;					
-	f2:
-		mov ebx, 0x1234567;
-		pop ebx;				//弹出压栈的地址
-		mov ebx, offset e;		//要跳转到的地址
-		push ebx;				//压入要跳转到的地址
-		ret;					//跳转
-	e:
-		mov ebx, 0x1234567;
-	}
-}
-
-void fun1()
-{
-	__try
-	{
-		_asm
-		{
-			mov esi, 0
-			mov eax, dword ptr ds : [esi]  //进入异常
-			push eax
-			mov ebp, esp
-			push - 1
-			push 3223
-			push 1331131
-			mov eax, fs:[0]
-			push eax
-			mov fs : [0], esp
-			pop eax
-			mov fs : [0], eax
-			pop eax
-			pop eax
-			pop eax
-		    pop eax
-			mov ebp, eax
-			nop
-		}
-
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		_asm nop
-	}
-	int i = 1;
-	MessageBox(NULL, "111", "222", MB_OK);
-}
-//str1[*input + 48] = str2;
-int main(void)
-{
-	fun1();
+	int i = 0;
+	FindString();
 	getchar();
 }
+
+void FindString()
+{
+	LPBYTE lpBaseAddress = (LPBYTE)GetModuleHandleA(NULL);
+	PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)lpBaseAddress;
+	PIMAGE_NT_HEADERS nt = (PIMAGE_NT_HEADERS)((DWORD)lpBaseAddress + dos->e_lfanew);
+	DWORD ImageSize = nt->OptionalHeader.SizeOfImage;
+	DWORD i = 0;
+	
+	do
+	{
+		DWORD Tmp = 0;
+		char String[MAX_PATH] = { 0 };
+		//如果连续四个字符都是可打印字符，则符合要求
+		if ((lpBaseAddress[i] >= 0x20 && lpBaseAddress[i] <= 0x7E)
+			&& (lpBaseAddress[i + 1] >= 0x20 && lpBaseAddress[i + 1] <= 0x7E)
+			&& (lpBaseAddress[i + 2] >= 0x20 && lpBaseAddress[i + 2] <= 0x7E)
+			&& (lpBaseAddress[i + 3] >= 0x20 && lpBaseAddress[i + 3] <= 0x7E))
+		{
+			//符合要求则记录一下出现的间隔，以便后期加上
+			//此处应该循环一下
+			while (lpBaseAddress[i + Tmp] >= 0x20 && lpBaseAddress[i + Tmp] <= 0x7E)
+			{
+				
+				String[Tmp] = lpBaseAddress[i + Tmp];
+				Tmp++;
+			}
+			String[Tmp + 1] = '\0';
+			printf("%s\n", String);
+			
+		}
+
+		i += (Tmp+1);
+	}while (i < ImageSize);
+
+}
+
+
+
+
 
 

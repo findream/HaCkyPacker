@@ -35,9 +35,13 @@ int main()
 
 
 	//Step3: 加密代码段
-	BOOL c = packer.EncryCodeSeg(stubinfo.pStubConf->dwXorKey);
+	char szPassword[8] = "0AcdDfZ";;
+	//strcpy(szPassword, packer.EncryKey(stubinfo.pStubConf->dwAESKey));
+	BOOL c = packer.EncryCodeSeg(szPassword);
 
 	
+	
+
 	//Step4：修复重定位
 	BOOL f = packer.FixStubReloc(lpNewStubBaseAddr);
 
@@ -60,6 +64,25 @@ int main()
 		lpFinalBuf,
 		dwFinalBufSize);
 
+	//加密lpFinalBufSize中的.rdata表
+	//获取rdata段的地址和大小
+	LPBYTE TmplpBaseAddress = NULL;
+	DWORD TmpImageSize = 0;
+	PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)lpFinalBuf;
+	PIMAGE_NT_HEADERS nt = (PIMAGE_NT_HEADERS)((DWORD)lpFinalBuf + dos->e_lfanew);
+	PIMAGE_SECTION_HEADER pSectionHeader = IMAGE_FIRST_SECTION(nt);
+	while (pSectionHeader->Name)
+	{
+		char* SectionName = (char*)(pSectionHeader->Name);
+		if (strcmp(SectionName, ".rdata") == 0)
+		{
+			TmplpBaseAddress = (LPBYTE)(pSectionHeader->VirtualAddress + (DWORD)lpFinalBuf);
+			TmpImageSize = pSectionHeader->SizeOfRawData;
+			break;
+		}
+		pSectionHeader++;
+	}
+	BOOL xx = packer.FindString(TmplpBaseAddress, TmpImageSize);
 
 	
 	//Step6:加密IAT表
@@ -69,16 +92,6 @@ int main()
 	//3. 整个复制一遍，伪造这样一个导入表，记住VirtualAddress和Size需要导出
 	//4. 在恢复的时候先链接到伪造的导入表，这样IDA显示的就是伪造的dll的导入表
 	//5. 在解密的时候，一定需要将原来的导入表的VirtualAddress和Size写回(这个通过交互函数解决)
-
-
-	//1. 需要定位到合并之后的Stub.dll内存起始地址
-	//DWORD dwStubBaseAddress = 0;
-	//BOOL aa = packer.GetStubBaseAddr(lpFinalBuf, &dwStubBaseAddress);
-	//4. 加密整个原始PE文件IAT表
-	//BOOL i = packer.EncryIAT(lpFinalBuf);
-
-
-
 
 
 	//清空IAT表数据

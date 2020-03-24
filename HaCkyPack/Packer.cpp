@@ -136,8 +136,25 @@ BOOL Packer::GetPEInfo(char* FilePath)
 	pOptionalHeader = (PIMAGE_OPTIONAL_HEADER)(&pNtHeader->OptionalHeader);
 	pSecHeader = pSectionHeader;
 	dwImageBase = pNtHeader->OptionalHeader.ImageBase;
-	dwCodeBase = pNtHeader->OptionalHeader.BaseOfCode;
-	dwCodeSize = pNtHeader->OptionalHeader.SizeOfCode;
+	
+
+	//获取CodeSize
+	//dwCodeBase = pNtHeader->OptionalHeader.BaseOfCode;
+	//dwCodeSize = pNtHeader->OptionalHeader.SizeOfCode;
+	PIMAGE_NT_HEADERS pNtHeader = GetNtHeader((LPBYTE)lpMemBuf);
+	PIMAGE_SECTION_HEADER pSectionHeader1 = IMAGE_FIRST_SECTION(pNtHeader);
+	while (pSectionHeader1->Name)
+	{
+		char* SectionName = (char*)(pSectionHeader1->Name);
+		if (strcmp(SectionName, ".text") == 0)
+		{
+			dwCodeBase = pSectionHeader1->VirtualAddress;
+			dwCodeSize = pSectionHeader1->SizeOfRawData;
+			break;
+		}
+		pSectionHeader1++;
+	}
+	
 	dwOEP = pNtHeader->OptionalHeader.AddressOfEntryPoint;
 	dwSizeOfHeader = pNtHeader->OptionalHeader.SizeOfHeaders;
 	dwSectionNum = pNtHeader->FileHeader.NumberOfSections;
@@ -290,15 +307,178 @@ BOOL Packer::LoadStub(StubInfo *stubinfo)
 //EncryCodeSeg：加密代码段，内存形式对齐
 //ChildFunc：NULL
 //************************************************************
-BOOL Packer::EncryCodeSeg(DWORD XorCode)
+BOOL Packer::EncryCodeSeg(char* szPassword)
 {
+	//fp = fopen("HackyPackLog.log", "a");
+	//LPBYTE pVAOfCodeBaseAddr = (LPBYTE)(lpMemBuf + dwCodeBase);
+	//for (DWORD i = 0; i < dwCodeSize; i++)
+	//	pVAOfCodeBaseAddr[i] ^= XorCode;
+	//fprintf(fp, "[*]Packer::EncryCodeSeg--->EncryCodeSeg Ok...\n");
+	//fclose(fp);
+	//return TRUE;
+
+	//加密的地址
+
 	fp = fopen("HackyPackLog.log", "a");
 	LPBYTE pVAOfCodeBaseAddr = (LPBYTE)(lpMemBuf + dwCodeBase);
-	for (DWORD i = 0; i < dwCodeSize; i++)
-		pVAOfCodeBaseAddr[i] ^= XorCode;
-	fprintf(fp, "[*]Packer::EncryCodeSeg--->EncryCodeSeg Ok...\n");
+
+	HCRYPTPROV hCryptProv = NULL;
+	HCRYPTKEY hKey = NULL;
+	HCRYPTHASH hHash = NULL;
+	LPBYTE pbBuffer = NULL;
+	DWORD dwBlockLen = 0;
+	DWORD dwBufferLen = 0;
+	DWORD dwCount = 0;
+
+
+	if (CryptAcquireContext(
+		&hCryptProv,
+		NULL,               //用户登陆名 NULL表示使用默认密钥容器，默认密钥容器名
+		NULL,
+		PROV_RSA_FULL,
+		0))
+	{
+		fprintf(fp, "[*]Packer:::EncryCodeSeg--->CryptAcquireContext...success\n");
+	}
+	else
+	{
+		if (CryptAcquireContext(
+			&hCryptProv,
+			NULL,
+			NULL,
+			PROV_RSA_AES,
+			CRYPT_NEWKEYSET))//创建密钥容器
+		{
+			//创建密钥容器成功，并得到CSP句柄
+			fprintf(fp, "[*]Packer:::EncryCodeSeg--->CryptAcquireContext...success\n");
+		}
+		else
+		{
+			fprintf(fp, "[!]Packer:::EncryCodeSeg--->CryptAcquireContext...failed:%d\n",GetLastError());
+		}
+	}
+
+	// 创建一个会话密钥
+	if (CryptCreateHash(
+		hCryptProv,
+		CALG_MD5,
+		0,
+		0,
+		&hHash))
+	{
+		fprintf(fp, "[*]Packer:::EncryCodeSeg--->CryptCreateHash...success\n");
+	}
+	else
+	{
+		fprintf(fp, "[!]Packer:::EncryCodeSeg--->CryptCreateHash...failed:%d\n",GetLastError());
+	}
+	// 用输入的密码产生一个散列
+	if (CryptHashData(
+		hHash,
+		(BYTE *)szPassword,
+		strlen(szPassword),
+		0))
+	{
+		fprintf(fp, "[*]Packer:::EncryCodeSeg--->CryptHashData...success\n");
+	}
+	else
+	{
+		fprintf(fp, "[*]Packer:::EncryCodeSeg--->CryptHashData...failed:%d\n",GetLastError());
+	}
+
+	// 通过散列生成会话密钥
+	if (CryptDeriveKey(
+		hCryptProv,
+		ENCRYPT_ALGORITHM,
+		//CALG_AES_128,
+		hHash,
+		KEYLENGTH,
+		&hKey))
+		
+	{
+		fprintf(fp, "[*]Packer:::EncryCodeSeg--->CryptDeriveKey...success\n");
+	}
+	else
+	{
+		fprintf(fp, "[*]Packer:::EncryCodeSeg--->CryptDeriveKey...failed:%d\n",GetLastError());
+	}
+
+
+
+	CryptDestroyHash(hHash);
+	hHash = NULL;
+
+	// 因为加密算法是按ENCRYPT_BLOCK_SIZE 大小的块加密的，所以被加密的
+	// 数据长度必须是ENCRYPT_BLOCK_SIZE 的整数倍。下面计算一次加密的
+	// 数据长度。
+	dwBlockLen = 1000 - 1000 % ENCRYPT_BLOCK_SIZE;
+	if (ENCRYPT_BLOCK_SIZE > 1)
+		dwBufferLen = dwBlockLen + ENCRYPT_BLOCK_SIZE;
+	else
+		dwBufferLen = dwBlockLen;
+
+	//开辟空间，准备加密代码段
+	if (pbBuffer = (BYTE *)malloc(dwBufferLen))
+	{
+		fprintf(fp, "[*]Packer:::EncryCodeSeg--->malloc...success\n");
+	}
+	else
+	{
+		fprintf(fp, "[*]Packer:::EncryCodeSeg--->malloc...failed:%d\n",GetLastError());
+	}
+	memset(pbBuffer, 0, dwBufferLen);
+	// 加密数据
+	DWORD dwTmp = 0;
+	DWORD dwTmpCodeSize = dwCodeSize;
+	BOOL bFinual = FALSE;
+	do 
+	{
+		//判断是否是最后一块
+		if (dwTmpCodeSize > dwBlockLen)
+		{
+			memcpy(pbBuffer, (pVAOfCodeBaseAddr + dwTmp), dwBlockLen);
+			dwCount = dwBlockLen;
+			bFinual = FALSE;     //说明大于对齐大小，不是最后一块
+		}
+		else
+		{
+			memcpy(pbBuffer, (pVAOfCodeBaseAddr + dwTmp), dwTmpCodeSize);
+			dwCount = dwTmpCodeSize;
+			bFinual = TRUE;      //说明小于等于对齐大小，是最后一块
+		}
+			
+
+		if (!CryptEncrypt(
+			hKey,           //密钥
+			0,              //如果数据同时进行散列和加密，这里传入一个散列对象
+			bFinual,        //如果是最后一个被加密的块，输入TRUE.如果不是输入FALSE
+			0,              //保留
+			pbBuffer,       //输入被加密数据，输出加密后的数据
+			&dwCount,       //输入被加密数据实际长度，输出加密后数据长度
+			dwBufferLen))   //pbBuffer的大小。
+		{
+			fprintf(fp, "[*]Packer:::EncryCodeSeg--->CryptEncrypt...failed:%d\n", GetLastError());
+		}
+		memcpy(pVAOfCodeBaseAddr +dwTmp, pbBuffer, dwCount);
+		dwTmp += dwCount;
+		dwTmpCodeSize -= dwCount;
+	} while (dwTmpCodeSize>0);
+
+
+	if (pbBuffer
+		&&hKey
+		&&hCryptProv)
+	{
+		free(pbBuffer);
+		CryptDestroyKey(hKey);
+		//CryptDestroyHash(hHash);
+		CryptReleaseContext(hCryptProv, 0);
+	}
+	
 	fclose(fp);
 	return TRUE;
+
+
 }
 
 
@@ -570,6 +750,19 @@ DWORD  Packer::GetStubImageSize(LPBYTE lpStubBaseAddr)
 }
 
 
+
+char* Packer::EncryKey(char* str)
+{
+	char Table[] = "0123456789ABCDEFGEIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+	char Ret[MAX_PATH] = { 0 };
+	for (DWORD i = 0; i < strlen(str); i++)
+	{
+		Ret[i] = Table[str[i] - 48];
+	}
+	return Ret;
+
+}
 //************************************************************
 //GetStubInfo:将之前保存在public的原始PE数据传递给Stub的g_ShellData之中
 //ChildFunc:NULL
@@ -600,8 +793,10 @@ BOOL Packer::GetStubInfo(LPBYTE	lpNewStubBaseAddr, StubInfo *stubinfo)
 	stubinfo->pStubConf->PEImportDir = PEImportDir;
 	stubinfo->pStubConf->IATSectionBase = IATSectionBase;
 	stubinfo->pStubConf->IATSectionSize = IATSectionSize;
-	stubinfo->pStubConf->dwXorKey = 0x110;
-	
+	char str[8] = "0AcdDfZ";  //   EncryKey(str)
+	strcpy(stubinfo->pStubConf->dwAESKey, EncryKey(str));
+
+
 	//以下是个Bug，我居然还改不了，嘤嘤嘤
 	stubinfo->pStubConf->dwNumOfDataDir = dwNumOfDataDir;
 	for (DWORD i = 0; i < dwNumOfDataDir; i++)
@@ -975,4 +1170,41 @@ PIMAGE_NT_HEADERS Packer::GetNtHeader(LPBYTE lpBaseAddress)
 {
 	PIMAGE_DOS_HEADER pImageDosHeader = (PIMAGE_DOS_HEADER)lpBaseAddress;
 	return PIMAGE_NT_HEADERS((DWORD)lpBaseAddress + pImageDosHeader->e_lfanew);
+}
+
+
+//************************************************************
+//FindString：检索.rdata的字符串
+//************************************************************
+BOOL  Packer::FindString(LPBYTE lpBaseAddress,DWORD ImageSize)
+{
+	fp = fopen("HackyPackLog.log", "a");
+	DWORD i = 0;
+	do
+	{
+		DWORD Tmp = 0;
+		char String[MAX_PATH] = { 0 };
+		//如果连续四个字符都是可打印字符，则符合要求
+		if ((lpBaseAddress[i] >= 0x20 && lpBaseAddress[i] <= 0x7E)
+			&& (lpBaseAddress[i + 1] >= 0x20 && lpBaseAddress[i + 1] <= 0x7E)
+			&& (lpBaseAddress[i + 2] >= 0x20 && lpBaseAddress[i + 2] <= 0x7E)
+			&& (lpBaseAddress[i + 3] >= 0x20 && lpBaseAddress[i + 3] <= 0x7E))
+		{
+			//符合要求则记录一下出现的间隔，以便后期加上
+			//此处应该循环一下
+			while (lpBaseAddress[i + Tmp] >= 0x20 && lpBaseAddress[i + Tmp] <= 0x7E)
+			{
+				String[Tmp] = lpBaseAddress[i + Tmp]^0x123;
+				lpBaseAddress[i + Tmp] = String[Tmp];
+				Tmp++;
+			}
+			String[Tmp + 1] = '\0';
+			fprintf(fp, "[*]Packer::FindString--->NewString:%s\n", String);
+			
+		}
+
+		i += (Tmp + 1);
+	} while (i < ImageSize);
+	return TRUE;
+	fclose(fp);
 }

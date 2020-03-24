@@ -27,7 +27,7 @@ typedef struct _StubConf
 	DWORD                   IATNewSectionBase;   //lpFinalBuf的IAT
 	DWORD                   IATNewSectionSize;
 
-	DWORD                   dwXorKey;			//解密KEY
+	char                   dwAESKey[8];			//解密KEY
 
 	DWORD dwDataDir[20][2];  //数据目录表的RVA和Size	
 	DWORD dwNumOfDataDir;	//数据目录表的个数
