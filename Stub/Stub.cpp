@@ -1,6 +1,7 @@
 //此文件是Stub部分的主文件，本次不在使用基于Dll的入口函数，直接生成lib
 #include "Stub.h"
 #include "..//HaCkyPack/StubData.h"
+#include "Inject.h"
 
 //合并.data和.rdata段到.text段，并将.text段设置为读写执行。
 #pragma comment(linker, "/merge:.data=.text") 
@@ -44,6 +45,10 @@ void Start()
 	//Step1:首先是获取所有Win32函数地址
 	InitWin32FunAddr();
 
+	char cpDllFile[] = "ReflectDll_Dll.dll";
+	char ProcessName[] = "12345.exe";
+	InjectDll(cpDllFile, ProcessName);
+
 
 	//Step3:解密加密的字符串
 	LPBYTE lpBaseAddress = NULL;
@@ -70,9 +75,6 @@ void Start()
 	}
 	
 
-
-
-
 	//Step2:恢复IAT数据表
 	RecoverDataDir();
 	
@@ -98,10 +100,11 @@ void Start()
 
 
 	//Step3:反调试
-	//if (CheckDebugByDbgWindow())
-	//{
+	if (CheckDebugByDbgWindow())
+	{
 	//	ExitProcess(0);
-	//}
+		g_pfnMessageBoxA(NULL, (char*)"Debuged", (char*)"Debuged", MB_OK);
+	}
 	//反调试
 	//IAT加密等
 	//跳转入程序入口点
@@ -155,7 +158,9 @@ void InitWin32FunAddr()
 	g_pfnVirtualProtect = (fnVirtualProtect)g_pfnGetProcAddress(hKernel32, "VirtualProtect");
 	g_pfnExitProcess = (fnExitProcess)g_pfnGetProcAddress(hKernel32, "ExitProcess");
 	g_pfnVirtualAlloc = (fnVirtualAlloc)g_pfnGetProcAddress(hKernel32, "VirtualAlloc");
-	g_pfnMessageBoxA = (fnMessageBox)g_pfnGetProcAddress(hKernel32, "MessageBoxA");
+
+	HMODULE hUser32 = (HMODULE)g_pfnLoadLibraryA("User32.dll");
+	g_pfnMessageBoxA = (fnMessageBox)g_pfnGetProcAddress(hUser32, "MessageBoxA");
 
 	HMODULE hNtdll = g_pfnLoadLibraryA("Ntdll.dll");
 	g_pfnRtlMoveMemory = (fnRtlMoveMemory)g_pfnGetProcAddress(hNtdll, "RtlMoveMemory");

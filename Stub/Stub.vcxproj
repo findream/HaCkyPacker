@@ -120,12 +120,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="GetProcAddressR.h" />
+    <ClInclude Include="Inject.h" />
+    <ClInclude Include="LoadLibraryR.h" />
+    <ClInclude Include="ReflectiveDLLInjection.h" />
     <ClInclude Include="Stub.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Anti.cpp" />
     <ClCompile Include="AntiDump.cpp" />
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="GetProcAddressR.cpp" />
+    <ClCompile Include="Inject.cpp" />
+    <ClCompile Include="LoadLibraryR.cpp" />
     <ClCompile Include="Stub.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

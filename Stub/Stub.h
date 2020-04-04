@@ -210,6 +210,83 @@ typedef BOOL(WINAPI *pfnCryptReleaseContext)(
 	_In_    DWORD       dwFlags
 );
 
+typedef HANDLE(WINAPI *pfnCreateFileA)(
+	_In_ LPCSTR lpFileName,
+	_In_ DWORD dwDesiredAccess,
+	_In_ DWORD dwShareMode,
+	_In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+	_In_ DWORD dwCreationDisposition,
+	_In_ DWORD dwFlagsAndAttributes,
+	_In_opt_ HANDLE hTemplateFile
+);
+
+typedef DWORD(WINAPI *pfnGetFileSize)(
+	_In_ HANDLE hFile,
+	_Out_opt_ LPDWORD lpFileSizeHigh
+);
+
+typedef BOOL (WINAPI *pfnReadFile)(
+	_In_ HANDLE hFile,
+	_Out_writes_bytes_to_opt_(nNumberOfBytesToRead, *lpNumberOfBytesRead) __out_data_source(FILE) LPVOID lpBuffer,
+	_In_ DWORD nNumberOfBytesToRead,
+	_Out_opt_ LPDWORD lpNumberOfBytesRead,
+	_Inout_opt_ LPOVERLAPPED lpOverlapped
+);
+
+typedef BOOL(WINAPI *pfnOpenProcessToken)(
+	_In_ HANDLE ProcessHandle,
+	_In_ DWORD DesiredAccess,
+	_Outptr_ PHANDLE TokenHandle
+);
+
+
+typedef BOOL(WINAPI *pfnLookupPrivilegeValueA)(
+	_In_opt_ LPCSTR lpSystemName,
+	_In_     LPCSTR lpName,
+	_Out_    PLUID   lpLuid
+);
+
+typedef BOOL(WINAPI *pfnAdjustTokenPrivileges)(
+	_In_ HANDLE TokenHandle,
+	_In_ BOOL DisableAllPrivileges,
+	_In_opt_ PTOKEN_PRIVILEGES NewState,
+	_In_ DWORD BufferLength,
+	_Out_writes_bytes_to_opt_(BufferLength, *ReturnLength) PTOKEN_PRIVILEGES PreviousState,
+	_Out_opt_ PDWORD ReturnLength
+);
+
+
+typedef HANDLE(WINAPI *pfnOpenProcess)(
+	_In_ DWORD dwDesiredAccess,
+	_In_ BOOL bInheritHandle,
+	_In_ DWORD dwProcessId
+);
+
+typedef DWORD(WINAPI *pfnWaitForSingleObject)(
+	_In_ HANDLE hHandle,
+	_In_ DWORD dwMilliseconds
+);
+
+typedef HANDLE(WINAPI *pfnGetProcessHeap)(
+	VOID
+);
+
+typedef LPVOID(WINAPI *pfnVirtualAllocEx)(
+	_In_ HANDLE hProcess,
+	_In_opt_ LPVOID lpAddress,
+	_In_ SIZE_T dwSize,
+	_In_ DWORD flAllocationType,
+	_In_ DWORD flProtect
+);
+
+typedef BOOL(WINAPI *pfnWriteProcessMemory)(
+	_In_ HANDLE hProcess,
+	_In_ LPVOID lpBaseAddress,
+	_In_reads_bytes_(nSize) LPCVOID lpBuffer,
+	_In_ SIZE_T nSize,
+	_Out_opt_ SIZE_T* lpNumberOfBytesWritten
+);
+
 
 //·ÇAPIº¯Êý
 void RecReloc();

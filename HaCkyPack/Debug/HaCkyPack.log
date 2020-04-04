@@ -1,4 +1,0 @@
-﻿cl : 命令行 warning D9025: 正在重写“/sdl”(用“/GS-”)
-  main.cpp
-e:\毕业设计\hackypack\hackypack\main.cpp(25): warning C4477: “fprintf”: 格式字符串“%0X”需要类型“unsigned int”的参数，但可变参数 1 拥有了类型“LPBYTE”
-  HaCkyPack.vcxproj -> E:\毕业设计\HaCkyPack\Debug\HaCkyPack.exe

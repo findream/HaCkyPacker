@@ -34,6 +34,12 @@ int main()
 
 
 
+	//´úÂë»ìÏý
+	DWORD dwVACodeBase = (DWORD)packer.lpMemBuf + packer.dwCodeBase;
+	DWORD dwVACodeSize = packer.dwCodeSize;
+	BOOL ggg = packer.UDisam(dwVACodeBase,dwVACodeSize);
+
+
 	//Step3: ¼ÓÃÜ´úÂë¶Î
 	char szPassword[8] = "0AcdDfZ";;
 	//strcpy(szPassword, packer.EncryKey(stubinfo.pStubConf->dwAESKey));

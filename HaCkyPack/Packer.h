@@ -8,6 +8,8 @@
 #pragma comment(lib, "Dbghelp.lib")
 #pragma comment(lib, "Shlwapi")
 
+
+
 #define KEYLENGTH  0x00800000
 #define ENCRYPT_ALGORITHM CALG_RC4
 #define ENCRYPT_BLOCK_SIZE 8
@@ -83,6 +85,11 @@ public:
 	BOOL GetStubInfo(LPBYTE	lpNewStubBaseAddr, StubInfo *stubinfo);
 	PIMAGE_NT_HEADERS GetNtHeader(LPBYTE lpBaseAddress);
 	char* EncryKey(char* str);
+
 	BOOL  FindString(LPBYTE lpFinalBuf, DWORD Size);
+
+
+	//´úÂë»ìÏý
+	BOOL UDisam(DWORD dwVACodeBase, DWORD dwVACodeSize);
 	
 };

@@ -18,11 +18,20 @@
     <ClInclude Include="Stub.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="GetProcAddressR.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="LoadLibraryR.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ReflectiveDLLInjection.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Inject.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Stub.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="dllmain.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -30,6 +39,18 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="AntiDump.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Stub.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Inject.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GetProcAddressR.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="LoadLibraryR.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

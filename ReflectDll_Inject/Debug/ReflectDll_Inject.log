@@ -1,0 +1,13 @@
+﻿cl : 命令行 warning D9035: “Gm”选项已否决，并将在将来的版本中移除
+  Inject.c
+e:\毕业设计\hackypack\reflectdll_inject\inject.c(17): warning C4013: “InjectDll”未定义；假设外部返回 int
+e:\毕业设计\hackypack\reflectdll_inject\inject.c(35): warning C4047: “函数”:“char *”与“int”的间接级别不同
+e:\毕业设计\hackypack\reflectdll_inject\inject.c(35): warning C4024: “ProcesstoPid”: 形参和实参 1 的类型不同
+e:\毕业设计\hackypack\reflectdll_inject\inject.c(39): warning C4047: “函数”:“LPCSTR”与“int”的间接级别不同
+e:\毕业设计\hackypack\reflectdll_inject\inject.c(39): warning C4024: “CreateFileA”: 形参和实参 1 的类型不同
+e:\毕业设计\hackypack\reflectdll_inject\inject.c(77): warning C4477: “fprintf”: 格式字符串“%s”需要类型“char *”的参数，但可变参数 1 拥有了类型“int”
+e:\毕业设计\hackypack\reflectdll_inject\inject.c(26): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  c:\program files (x86)\windows kits\10\include\10.0.17763.0\ucrt\stdio.h(208): note: 参见“fopen”的声明
+e:\毕业设计\hackypack\reflectdll_inject\inject.c(102): warning C4047: “return”:“DWORD”与“void *”的间接级别不同
+e:\毕业设计\hackypack\reflectdll_inject\inject.c(119): warning C4047: “return”:“DWORD”与“void *”的间接级别不同
+  ReflectDll_Inject.vcxproj -> E:\毕业设计\HaCkyPack\Debug\ReflectDll_Inject.exe

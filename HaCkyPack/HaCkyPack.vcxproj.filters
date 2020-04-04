@@ -27,6 +27,9 @@
     <ClCompile Include="Packer.cpp">
       <Filter>Packer</Filter>
     </ClCompile>
+    <ClCompile Include="CodeConfusion.cpp">
+      <Filter>Packer</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="main.h">
