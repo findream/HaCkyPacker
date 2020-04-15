@@ -1,18 +1,50 @@
 #include "Packer.h"
 #pragma warning(disable:4996)
 
-int main()
+int main(int argc, char **argv)
 {
 	Packer packer;
-	char FilePath[MAX_PATH] = "D:\\Test.exe";
 
+	//兼容GUI--参数过滤
+	if (argc != 3)
+	{
+		packer.fp = fopen("HackyPackLog.log", "w");
+		fprintf(packer.fp, "[!]Packer::Main--->Argc Number Error\n");
+		fclose(packer.fp);
+		return 1;
+	}
+	
+	//兼容GUI--初始化工作模式
+	char FilePath[MAX_PATH] = {0};
+	strcpy(FilePath, argv[1]);
+	packer.WorkMode = ((DWORD)argv[2][0]-0x30);
+	if (packer.WorkMode != 0 &&
+		packer.WorkMode != 1 &&
+		packer.WorkMode != 2)
+	{
+		packer.fp = fopen("HackyPackLog.log", "w");
+		fprintf(packer.fp, "[!]Packer::Main--->WorkMode Error\n");
+		fclose(packer.fp);
+		return 1;
+	}
+
+	//char FilePath[MAX_PATH] = "C:\\Test.exe";
 	//Step1：获取待加壳程序的基本PE信息
-	BOOL a = packer.GetPEInfo(FilePath);
+	BOOL bFlag_GetInfo= packer.GetPEInfo(FilePath);
+	if (bFlag_GetInfo == FALSE)
+	{
+		return 1;
+	}
 
 
 	//Step2：载入Stub部分
 	StubInfo stubinfo = { 0 };
-	BOOL b = packer.LoadStub(&stubinfo);
+	BOOL bFlag_LoadStub = packer.LoadStub(&stubinfo);
+	if (bFlag_LoadStub == FALSE)
+	{
+		return 1;
+	}
+
 
 
 
@@ -26,35 +58,52 @@ int main()
 	fclose(packer.fp);
 
 
-
-
-
 	//Step4:获取Stub的数据并填充原始PE的PE数据
-	BOOL e = packer.GetStubInfo(lpNewStubBaseAddr, &stubinfo);
+	BOOL bFlag_GetStubInfo = FALSE;
+	bFlag_GetStubInfo = packer.GetStubInfo(lpNewStubBaseAddr, &stubinfo);
+	if (bFlag_GetStubInfo == FALSE)
+	{
+		return 1;
+	}
 
 
 
 	//代码混淆
-	DWORD dwVACodeBase = (DWORD)packer.lpMemBuf + packer.dwCodeBase;
-	DWORD dwVACodeSize = packer.dwCodeSize;
-	BOOL ggg = packer.UDisam(dwVACodeBase,dwVACodeSize);
+	if (packer.WorkMode == 2)
+	{
+		DWORD dwVACodeBase = (DWORD)packer.lpMemBuf + packer.dwCodeBase;
+		DWORD dwVACodeSize = packer.dwCodeSize;
+		BOOL ggg = packer.UDisam(dwVACodeBase, dwVACodeSize);
+	}
+
 
 
 	//Step3: 加密代码段
 	char szPassword[8] = "0AcdDfZ";;
 	//strcpy(szPassword, packer.EncryKey(stubinfo.pStubConf->dwAESKey));
-	BOOL c = packer.EncryCodeSeg(szPassword);
-
-	
-	
+	BOOL bFlag_EncryCodeSeg = FALSE;
+	bFlag_EncryCodeSeg = packer.EncryCodeSeg(szPassword);
+	if (bFlag_EncryCodeSeg == FALSE)
+	{
+		return 1;
+	}
 
 	//Step4：修复重定位
-	BOOL f = packer.FixStubReloc(lpNewStubBaseAddr);
+	BOOL bFlag_FixStubReloc = FALSE;
+	bFlag_FixStubReloc = packer.FixStubReloc(lpNewStubBaseAddr);
+	if (bFlag_FixStubReloc == FALSE)
+	{
+		return 1;
+	}
 
 	//Step5：设置OEP
 	DWORD dwStubOep = stubinfo.pfnStart - (DWORD)lpNewStubBaseAddr;
-	BOOL g = packer.SetOepOfPEFile(dwStubOep);
-
+	BOOL bFlag_SetOep = FALSE;
+	bFlag_SetOep = packer.SetOepOfPEFile(dwStubOep);
+	if (bFlag_SetOep == FALSE)
+	{
+		return 1;
+	}
 
 
 
@@ -80,7 +129,9 @@ int main()
 	while (pSectionHeader->Name)
 	{
 		char* SectionName = (char*)(pSectionHeader->Name);
-		if (strcmp(SectionName, ".rdata") == 0)
+		if (strcmp(SectionName, "") == 0)
+			break;
+		if ((strcmp(SectionName, ".rdata") == 0) || (strcmp(SectionName, "const") == 0))
 		{
 			TmplpBaseAddress = (LPBYTE)(pSectionHeader->VirtualAddress + (DWORD)lpFinalBuf);
 			TmpImageSize = pSectionHeader->SizeOfRawData;
@@ -88,20 +139,24 @@ int main()
 		}
 		pSectionHeader++;
 	}
-	BOOL xx = packer.FindString(TmplpBaseAddress, TmpImageSize);
 
-	
-	//Step6:加密IAT表
-	//现在需要解决的问题是这样的，
-	//1. 需要定位到合并之后的Stub.dll内存起始地址，通过.HaCky节区VirtualAddress来获取
-	//2. 获取了Stub.dll内存起始地址，定位到导入表，获取VirtualAddress和Size
-	//3. 整个复制一遍，伪造这样一个导入表，记住VirtualAddress和Size需要导出
-	//4. 在恢复的时候先链接到伪造的导入表，这样IDA显示的就是伪造的dll的导入表
-	//5. 在解密的时候，一定需要将原来的导入表的VirtualAddress和Size写回(这个通过交互函数解决)
+
+	//加密字符串
+	BOOL bFlag_EncodeString = FALSE;
+	bFlag_EncodeString = packer.FindString(TmplpBaseAddress, TmpImageSize);
+	if (bFlag_EncodeString == FALSE)
+	{
+		return 1;
+	}
 
 
 	//清空IAT表数据
-	BOOL j = packer.ClearDataDir(lpFinalBuf, &stubinfo);
+	BOOL bFlag_ClearDataDir = FALSE;
+	bFlag_ClearDataDir = packer.ClearDataDir(lpFinalBuf, &stubinfo);
+	if (bFlag_ClearDataDir == FALSE)
+	{
+		return 1;
+	}
 	//************************************************************
 	//后知后觉：
 	//关于在ClearDataDir函数中，无法传递原始PE数据给Stub的g_ShellData的bug
@@ -118,8 +173,81 @@ int main()
 	packer.GetOptionHeader(lpFinalBuf)->DllCharacteristics &= (~0x40);
 
 	//Step9:保存文件
-	BOOL h = packer.SaveFinalFile(lpFinalBuf, dwFinalBufSize,FilePath);
+	char* NewFilePath = packer.GetNewFilePath(FilePath);
+	BOOL bFlag_SaveFinalFile = FALSE;
+	bFlag_SaveFinalFile = packer.SaveFinalFile(lpFinalBuf, dwFinalBufSize, NewFilePath);
+	if (bFlag_SaveFinalFile == FALSE)
+	{
+		return 1;
+	}
+
+	//Step3：只有在模式2中读取ReflectDll_Dll.dll
+	DWORD dwSizeOfReflectDll = 0;
+	LPBYTE lpReflectDllBuf = NULL;
+	if (packer.WorkMode == 2)
+	{
+		packer.fp = fopen("HackyPackLog.log", "a");
+
+		//读取ReflectDll_Dll.dll
+		HANDLE hFile_ReflectDll = CreateFile("ReflectDll_Dll.dll",
+			GENERIC_READ | GENERIC_WRITE, 0, NULL,
+			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile_ReflectDll == NULL)
+		{
+			fprintf(packer.fp, "[!]Packer::Main--->OpenReflectDll Error:%d\n", GetLastError());
+			fclose(packer.fp);
+			CloseHandle(hFile_ReflectDll);
+			return 1;
+		}
+
+
+		dwSizeOfReflectDll = GetFileSize(hFile_ReflectDll, 0);
+		lpReflectDllBuf = new BYTE[dwSizeOfReflectDll];
+		DWORD dwTmpSizeOfReflectDll = 0;
+		if (FALSE == ReadFile(hFile_ReflectDll,
+			lpReflectDllBuf,
+			dwSizeOfReflectDll,
+			&dwTmpSizeOfReflectDll,
+			NULL))
+		{
+			fprintf(packer.fp, "[!]Packer::Main--->ReadReflectDll Error:%d\n", GetLastError());
+			fclose(packer.fp);
+			CloseHandle(hFile_ReflectDll);
+			return 1;
+		}
+
+		//附加数据
+		HANDLE hNewFile = CreateFile(NewFilePath,
+			FILE_APPEND_DATA, 0, NULL,
+			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hNewFile == NULL)
+		{
+			fprintf(packer.fp, "[!]Packer::Main--->OpenNewFile Error:%d\n", GetLastError());
+			fclose(packer.fp);
+			CloseHandle(hFile_ReflectDll);
+			return 1;
+		}
+
+
+		//写入数据
+		DWORD WriteSize = 0;
+		BOOL bResult = FALSE;
+		bResult = WriteFile(hNewFile, lpReflectDllBuf, dwSizeOfReflectDll, &WriteSize, NULL);
+		if (bResult == FALSE)
+		{
+			fprintf(packer.fp, "[!]Packer::Main--->WriteFile Error:%d\n", GetLastError());
+			fclose(packer.fp);
+			CloseHandle(hFile_ReflectDll);
+			return 1;
+		}
+
+		fclose(packer.fp);
+		CloseHandle(hNewFile);
+		CloseHandle(hFile_ReflectDll);
+	}
 
 	delete[] packer.lpMemBuf;
+	if (lpReflectDllBuf != NULL)
+		delete[] lpReflectDllBuf;
 	return 0;
 }

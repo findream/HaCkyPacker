@@ -1,8 +1,0 @@
-[*]Packer::OpenFile--->GetFileSize 1307827...
-[*]Packer::IsLegalPE--->LegalPE,FileSize:1307827...
-[*]Packer::GetPEInfo--->GetPEInfo...ok
-		[*]Packer::GetPEInfo--->IATSectionBase:307200
-		[*]Packer::GetPEInfo--->IATSectionSize:2036
-[*]Packer::LoadStub--->LoadStub Success,BaseAddr:f280000
-[*]Packer::Main--->MemcpyStub Success,BaseAddr:475C020
-[!]Packer::LoadStub--->LoadStub ok

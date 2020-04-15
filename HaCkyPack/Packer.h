@@ -52,6 +52,8 @@ public:
 	DWORD                   dwNumOfDataDir;
 	DWORD                   dwDataDir[20][2];  //数据目录表的RVA和Size
 
+	//工作模式
+	DWORD                   WorkMode;
 
 public:
 	void InitClassNumber();
@@ -88,6 +90,7 @@ public:
 
 	BOOL  FindString(LPBYTE lpFinalBuf, DWORD Size);
 
+	char* GetNewFilePath(char* FilePath);
 
 	//代码混淆
 	BOOL UDisam(DWORD dwVACodeBase, DWORD dwVACodeSize);

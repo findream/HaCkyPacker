@@ -34,6 +34,9 @@ typedef struct _StubConf
 
 	DWORD dwWeiZaoIATVirtualAddress;
 	DWORD dwWeiZaoIATSize;
+
+	//ºÊ»›GUI
+	DWORD                   WorkMode;
 }StubConf;
 
 struct StubInfo

@@ -44,6 +44,9 @@ typedef struct _SHELL_DATA
 	DWORD dwWeiZaoIATVirtualAddress;
 	DWORD dwWeiZaoIATSize;
 
+	//兼容GUI
+	DWORD                   WorkMode;
+
 }SHELL_DATA, *PSHELL_DATA;
 
 //在头文件中定义必要的Win32函数指针
@@ -287,6 +290,10 @@ typedef BOOL(WINAPI *pfnWriteProcessMemory)(
 	_Out_opt_ SIZE_T* lpNumberOfBytesWritten
 );
 
+typedef DWORD (WINAPI *pfnGetCurrentProcessId)(
+	VOID
+);
+
 
 //非API函数
 void RecReloc();
@@ -311,3 +318,10 @@ void AntiDumpByImageSize();
 void AntiDumpByHideProcess();
 void AntiDumpByMemory();
 BOOL  FindString(LPBYTE lpBaseAddress, DWORD ImageSize);
+
+//Anti
+bool CheckDebugByBeingDebugged();
+BOOL CheckDebugBy0xCC();
+BOOL CheckDebugByHardBreakpoint();
+BOOL CheckVMWareByIn();
+BOOL CheckVMWareByCpuid();

@@ -53,6 +53,9 @@ void Packer::InitClassNumber()
 		dwDataDir[i][0] = 0;
 		dwDataDir[i][1] = 0;
 	}
+
+	//初始化
+	WorkMode = 0;
 }
 
 //************************************************************
@@ -146,7 +149,9 @@ BOOL Packer::GetPEInfo(char* FilePath)
 	while (pSectionHeader1->Name)
 	{
 		char* SectionName = (char*)(pSectionHeader1->Name);
-		if (strcmp(SectionName, ".text") == 0)
+		if ((strcmp(SectionName, ".text") == 0)||
+			(strcmp(SectionName, "CODE") == 0)||
+			(strcmp(SectionName, "code") == 0))
 		{
 			dwCodeBase = pSectionHeader1->VirtualAddress;
 			dwCodeSize = pSectionHeader1->SizeOfRawData;
@@ -672,7 +677,7 @@ BOOL Packer::SetOepOfPEFile(DWORD dwStubOep)
 //GetNewFilePath：构造新文件的路径
 //ChildFunc:NULL
 //************************************************************
-char* GetNewFilePath(char* FilePath)
+char* Packer::GetNewFilePath(char* FilePath)
 {
 	//char NewFilePath[MAX_PATH] = { 0 };
 	PathRemoveExtension(FilePath);  
@@ -687,7 +692,7 @@ char* GetNewFilePath(char* FilePath)
 //SaveFinalFile：保存文件
 //ChildFunc::
 //************************************************************
-BOOL Packer::SaveFinalFile(LPBYTE lpFinalBuf, DWORD dwFinalBufSize,char* FilePath)
+BOOL Packer::SaveFinalFile(LPBYTE lpFinalBuf, DWORD dwFinalBufSize,char* NewFilePath)
 {
 	fp = fopen("HackyPackLog.log", "a");
 	PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)lpFinalBuf;
@@ -698,10 +703,9 @@ BOOL Packer::SaveFinalFile(LPBYTE lpFinalBuf, DWORD dwFinalBufSize,char* FilePat
 		pSectionHeader->PointerToRawData = pSectionHeader->VirtualAddress;
 	}
 
-	//构造新文件路径
-	char* NewFilePath = GetNewFilePath(FilePath);
 
-
+	//构造路径
+	//char* NewFilePath = GetNewFilePath(FilePath);
 	HANDLE hFile = CreateFileA(
 		NewFilePath,
 		GENERIC_WRITE,
@@ -808,7 +812,7 @@ BOOL Packer::GetStubInfo(LPBYTE	lpNewStubBaseAddr, StubInfo *stubinfo)
 			pOptionalHeader->DataDirectory[i].Size;
 	}
 
-
+	stubinfo->pStubConf->WorkMode = WorkMode;
 	if (stubinfo->pfnStart != 0 &&
 		stubinfo->StubBase != 0 &&
 		stubinfo->pStubConf != NULL)
@@ -1178,12 +1182,14 @@ PIMAGE_NT_HEADERS Packer::GetNtHeader(LPBYTE lpBaseAddress)
 //************************************************************
 BOOL  Packer::FindString(LPBYTE lpBaseAddress,DWORD ImageSize)
 {
+	if (lpBaseAddress == NULL || ImageSize == 0)
+		return TRUE;
 	fp = fopen("HackyPackLog.log", "a");
 	DWORD i = 0;
 	do
 	{
 		DWORD Tmp = 0;
-		char String[MAX_PATH] = { 0 };
+		char String[0x3400] = { 0 };
 		//如果连续四个字符都是可打印字符，则符合要求
 		if ((lpBaseAddress[i] >= 0x20 && lpBaseAddress[i] <= 0x7E)
 			&& (lpBaseAddress[i + 1] >= 0x20 && lpBaseAddress[i + 1] <= 0x7E)
@@ -1194,17 +1200,21 @@ BOOL  Packer::FindString(LPBYTE lpBaseAddress,DWORD ImageSize)
 			//此处应该循环一下
 			while (lpBaseAddress[i + Tmp] >= 0x20 && lpBaseAddress[i + Tmp] <= 0x7E)
 			{
-				String[Tmp] = lpBaseAddress[i + Tmp]^0x123;
+				if (Tmp > 3399)
+					break;
+				String[Tmp] = lpBaseAddress[i + Tmp]^0x001;
 				lpBaseAddress[i + Tmp] = String[Tmp];
 				Tmp++;
 			}
 			String[Tmp + 1] = '\0';
+			//printf("%s", String);
 			fprintf(fp, "[*]Packer::FindString--->NewString:%s\n", String);
 			
 		}
-
 		i += (Tmp + 1);
 	} while (i < ImageSize);
 	return TRUE;
 	fclose(fp);
 }
+
+

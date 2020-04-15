@@ -21,7 +21,7 @@ BOOL WINAPI DllMain( HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved )
 		case DLL_PROCESS_ATTACH:
 		{
 			hAppInstance = hinstDLL;
-			MessageBoxA(NULL, "Hello from DllMain!", "Reflective Dll Injection", MB_OK);
+		//	MessageBoxA(NULL, "Hello from DllMain!", "Reflective Dll Injection", MB_OK);
 			
 #if defined(ENVIRONMENT32)
 			InstallNtQuerySystemInformationHook_x86();

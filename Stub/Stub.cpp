@@ -1,4 +1,11 @@
 //此文件是Stub部分的主文件，本次不在使用基于Dll的入口函数，直接生成lib
+/*
+提供三种模式
+@1. 节能模式(加密代码段，设置重定位，最简单的反调试，一组花指令，最简单的反dump，SMC，删除数据目录)
+@2. 均衡模式(以上，较高级的反调试，两组反dump，IAT加密)
+@3. 安全模式(以上,HideProcess，代码混淆)
+*/
+
 #include "Stub.h"
 #include "..//HaCkyPack/StubData.h"
 #include "Inject.h"
@@ -45,9 +52,17 @@ void Start()
 	//Step1:首先是获取所有Win32函数地址
 	InitWin32FunAddr();
 
-	char cpDllFile[] = "ReflectDll_Dll.dll";
-	char ProcessName[] = "12345.exe";
-	InjectDll(cpDllFile, ProcessName);
+
+	//注入HideProcess
+	if (g_ShellData.WorkMode == 2)
+	{
+		char cpDllFile[] = "ReflectDll_Dll.dll";
+
+		//读取文件，然后释放dll
+		char ProcessName[] = "12345.exe";
+		InjectDll(cpDllFile, ProcessName);
+	}
+
 
 
 	//Step3:解密加密的字符串
@@ -65,10 +80,22 @@ void Start()
 	while (pSectionHeader->Name)
 	{
 		char* SectionName = (char*)(pSectionHeader->Name);
-		if (MyStrcmp(SectionName, ".rdata"))
+		if (MyStrcmp(SectionName, ""))
+			break;
+		if (MyStrcmp(SectionName, ".rdata") || (MyStrcmp(SectionName, "const")))
 		{
 			TmplpBaseAddress = (LPBYTE)(pSectionHeader->VirtualAddress + (DWORD)lpBaseAddress);
 			TmpImageSize = pSectionHeader->SizeOfRawData;
+
+			//反调试Mode3 利用ProcessDebugPort反调试
+			if (g_ShellData.WorkMode == 2)
+			{
+				if (TRUE == CheckDebugByNtQueryInformationProcess_ProcessDebugPort())
+				{
+					g_pfnMessageBoxA(NULL, (char*)"Debuged1", (char*)"Debuged", MB_OK);
+				}
+			}
+
 			break;
 		}
 		pSectionHeader++;
@@ -80,14 +107,36 @@ void Start()
 	
 	//Step3:填充IAT
 	FixIAT();
+	
+	//Step2：加密IAT表
+	if (g_ShellData.WorkMode == 1 ||
+		g_ShellData.WorkMode == 2)
+	{
+
+		DecryptIAT();
+	}
+	
+	if (g_ShellData.WorkMode == 2)
+	{
+		if (CheckDebugBy0xCC())
+		{
+			//g_pfnMessageBoxA(NULL, (char*)"Debuged2", (char*)"Debuged", MB_OK);
+		}
+	
+	}
 
 	//AntiDump
 	AntiDumpByImageSize();
-	//AntiDumpByMemory();   //注意在vs2017编写的程序中容易出现奔溃
+	if (g_ShellData.WorkMode == 2)
+	{
+		AntiDumpByMemory();   //注意在vs2017编写的程序中容易出现奔溃
+	}
+	
 
-
-	//Step2：加密IAT表
-	//DecryptIAT();
+	if (true == CheckDebugByBeingDebugged())
+	{
+		g_pfnMessageBoxA(NULL, (char*)"Debuged3", (char*)"Debuged", MB_OK);
+	}
 
 
 
@@ -95,15 +144,19 @@ void Start()
 	//需要解密KEY
 	DecryptCodeSeg();
 
+
+	//加密字符串
 	FindString(TmplpBaseAddress, TmpImageSize);
 
 
 
-	//Step3:反调试
-	if (CheckDebugByDbgWindow())
+
+
+	//Step3:反调试Mode1 
+	if (CheckDebugByDbgWindow())  //检查od进程，有局限性
 	{
 	//	ExitProcess(0);
-		g_pfnMessageBoxA(NULL, (char*)"Debuged", (char*)"Debuged", MB_OK);
+		g_pfnMessageBoxA(NULL, (char*)"Debuged4", (char*)"Debuged", MB_OK);
 	}
 	//反调试
 	//IAT加密等
@@ -138,6 +191,7 @@ void Start()
 	e:
 		mov ebx, 0x1234567;
 	}
+	CheckVMWareByCpuid();
 	dwNewOEP = g_ShellData.dwOEP + g_ShellData.dwImageBase;
 	_asm jmp dwNewOEP
 }
@@ -150,6 +204,11 @@ void Start()
 //************************************************************
 void InitWin32FunAddr()
 {
+
+	//if (CheckVMWareByIn() == TRUE)
+	//{
+	//	g_pfnMessageBoxA(NULL, (char*)"Debuged", (char*)"Debuged", MB_OK);
+	//}
 	//从Kenel32中获取函数
 	HMODULE hKernel32 = GetKernel32BaseAddr();
 	g_pfnGetProcAddress = (fnGetProcAddress)MyGetProcAddress();
@@ -164,6 +223,12 @@ void InitWin32FunAddr()
 
 	HMODULE hNtdll = g_pfnLoadLibraryA("Ntdll.dll");
 	g_pfnRtlMoveMemory = (fnRtlMoveMemory)g_pfnGetProcAddress(hNtdll, "RtlMoveMemory");
+
+	if (CheckDebugByHardBreakpoint() == TRUE)
+	{
+		g_pfnMessageBoxA(NULL, (char*)"Debuged", (char*)"Debuged", MB_OK);
+	}
+
 }
 
 /*-------------------------
@@ -418,8 +483,11 @@ void  DecryptIAT()
 {
 	//FILE *fp = fopen("HackyPackLog.log", "a");
 	HMODULE hModule = (HMODULE)GetModuleHandle(NULL);
-	DWORD dwRvaOfImportTable =
-		GetOptionHeader((LPBYTE)hModule)->DataDirectory[1].VirtualAddress;
+
+	PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)hModule;
+	PIMAGE_NT_HEADERS pNtHeaders = (PIMAGE_NT_HEADERS)((DWORD)hModule + pDosHeader->e_lfanew);
+	DWORD dwRvaOfImportTable = pNtHeaders->OptionalHeader.DataDirectory[1].VirtualAddress;
+	//	GetOptionHeader((LPBYTE)hModule)->DataDirectory[1].VirtualAddress;
 	PIMAGE_IMPORT_DESCRIPTOR pImportTable = (PIMAGE_IMPORT_DESCRIPTOR)(dwRvaOfImportTable + (DWORD)hModule);
 
 	//外层遍历模块
@@ -856,25 +924,29 @@ void RecReloc()
 //恢复加密的字符串
 BOOL  FindString(LPBYTE lpBaseAddress, DWORD ImageSize)
 {
+	if (lpBaseAddress == NULL || ImageSize == 0)
+		return TRUE;
 	HMODULE hKerel32 = g_pfnLoadLibraryA("Kernel32.dll");
 	pfnHeapCreate MyHeapCreate =
 		(pfnHeapCreate)g_pfnGetProcAddress(hKerel32, "HeapCreate");
 
-	pfnHeapAlloc MyHeapAlloc =
-		(pfnHeapAlloc)g_pfnGetProcAddress(hKerel32, "HeapAlloc");
-
-	pfnHeapFree MyHeapFree =
-		(pfnHeapFree)g_pfnGetProcAddress(hKerel32, "HeapFree");
+	//=========================================================
 
 	DWORD dwOld = 0;
 	g_pfnVirtualProtect(lpBaseAddress, ImageSize, PAGE_EXECUTE_READWRITE, &dwOld);
 	DWORD i = 0;
 	do
 	{
+		pfnHeapAlloc MyHeapAlloc =
+			(pfnHeapAlloc)g_pfnGetProcAddress(hKerel32, "HeapAlloc");
+
+		pfnHeapFree MyHeapFree =
+			(pfnHeapFree)g_pfnGetProcAddress(hKerel32, "HeapFree");
+
 		DWORD Tmp = 0;
-		//char String[260] = { 0 };
-		HANDLE hHeap = MyHeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 260, 0);
-		char* String = (char*)MyHeapAlloc(hHeap, HEAP_ZERO_MEMORY, 260);
+
+		HANDLE hHeap = MyHeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0x3400, 0);
+		char* String = (char*)MyHeapAlloc(hHeap, HEAP_ZERO_MEMORY, 0x3400);
 		//如果连续四个字符都是可打印字符，则符合要求
 		if ((lpBaseAddress[i] >= 0x20 && lpBaseAddress[i] <= 0x7E)
 			&& (lpBaseAddress[i + 1] >= 0x20 && lpBaseAddress[i + 1] <= 0x7E)
@@ -885,11 +957,14 @@ BOOL  FindString(LPBYTE lpBaseAddress, DWORD ImageSize)
 			//此处应该循环一下
 			while (lpBaseAddress[i + Tmp] >= 0x20 && lpBaseAddress[i + Tmp] <= 0x7E)
 			{
-				String[Tmp] = lpBaseAddress[i + Tmp] ^ 0x123;
+				if (Tmp > 3399)
+					break;
+				String[Tmp] = lpBaseAddress[i + Tmp] ^ 0x001;
 				lpBaseAddress[i + Tmp] = String[Tmp];
 				Tmp++;
 			}
 			String[Tmp + 1] = '\0';
+
 			//	fprintf(fp, "[*]Packer::FindString--->NewString:%s\n", String);
 
 		}
@@ -897,5 +972,20 @@ BOOL  FindString(LPBYTE lpBaseAddress, DWORD ImageSize)
 		i += (Tmp + 1);
 	} while (i < ImageSize);
 	g_pfnVirtualProtect(lpBaseAddress, ImageSize, dwOld, &dwOld);
+	return TRUE;
+}
+
+
+BOOL FreeDll()
+{
+	//获取当前进程路径
+
+	//CreateFile
+
+	//GetFileSize
+
+	//ReadFile
+
+	//递减，得到DllSize，
 	return TRUE;
 }

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window size="800,600" caption="0,0,0,35">
+  <VBox bkcolor="bk_wnd_darkcolor">
+    <HBox width="stretch" height="35" bkcolor="bk_wnd_lightcolor">
+      <Control width="auto" height="auto" bkimage="logo_18x18.png" valign="center" margin="8"/>
+      <Label text="HaCkyPacker_V1.5" valign="center" margin="8"/>
+      <Control />
+      <Button class="btn_wnd_min" name="minbtn" margin="4,6,0,0"/>
+      <Box width="21" margin="4,6,0,0">
+        <Button class="btn_wnd_max" name="maxbtn"/>
+        <Button class="btn_wnd_restore" name="restorebtn" visible="false"/>
+      </Box>
+      <Button class="btn_wnd_close" name="closebtn" margin="4,6,8,0"/>
+    </HBox>
+
+    <Box>
+
+        <HBox height="30" childmargin="10" margin="160,205,0,0">
+            <Box bordersize="1" bordercolor="splitline_level1" width="300" >
+                <RichEdit name="edit_total"   font="system_14" width="stretch" height="auto"  normaltextcolor="black" multiline="false" promptmode="true" prompttext="" promptcolor="splitline_level1" autohscroll="true"/>                    
+            </Box>
+        </HBox>
+        <VBox margin="500,200,100,100"  width="auto" height="auto">
+          <Button class="DaKai" name="btn_DaKai" text="打开文件"/> 
+        </VBox>
+
+        <VBox margin="150,300,0,0"  width="auto" height="auto">
+          <Button class="JieNeng_Mode" name="btn_JieNeng" /> 
+          <Label name="JieNeng_Tips" text="快速模式"/>
+        </VBox>
+        
+        <VBox margin="350,300,0,0"   width="auto" height="auto">
+          <Button class="JunHeng_Mode"  name="btn_JunHeng"/> 
+          <Label name="JieNeng_Tips"  text="均衡模式"/>
+        </VBox>   
+
+        <VBox margin="550,300,0,0"   width="auto" height="auto">
+          <Button class="AnQuan_Mode"  name="btn_AnQuan"/> 
+          <Label name="JieNeng_Tips"  text="安全模式"/>
+        </VBox>
+       <!--TileBox columns="3">
+        <Button class="JieNeng_Mode" halign="left" valign="bottom" name="btn_JieNeng"/> 
+        <Button class="JunHeng_Mode" halign="center" valign="bottom" name="btn_JunHeng"/> 
+        <Button class="AnQuan_Mode" halign="right"  valign="bottom" name="btn_AnQuan"/> 
+      </TileBox-->
+    </Box>
+  </VBox>
+</Window>

@@ -22,9 +22,16 @@ BOOL CheckDebugByNtQueryInformationProcess_ProcessDebugPort()
 	NtQueryInformationProcessPtr MyNtQueryInformationProcess = 
 		(NtQueryInformationProcessPtr)g_pfnGetProcAddress(hModule, "NtQueryInformationProcess");
 	
-	pfnGetCurrentProcess MyGetCurrentProcess =
-		(pfnGetCurrentProcess)g_pfnGetProcAddress(hKernel32, "GetCurrentProcess");
-	MyNtQueryInformationProcess(MyGetCurrentProcess(), 
+	pfnGetCurrentProcessId MyGetCurrentProcessId =
+		(pfnGetCurrentProcessId)g_pfnGetProcAddress(hKernel32, "GetCurrentProcessId");
+
+	pfnOpenProcess MyOpenProcess = 
+		(pfnOpenProcess)g_pfnGetProcAddress(hKernel32, "OpenProcess");
+
+
+	DWORD dwPid = MyGetCurrentProcessId();
+	HANDLE hCurrentProcess = MyOpenProcess(PROCESS_ALL_ACCESS, FALSE, dwPid);
+	MyNtQueryInformationProcess(hCurrentProcess,
 		ProcessDebugPort, 
 		&debugPort, 
 		sizeof(debugPort),
@@ -54,7 +61,7 @@ BOOL CheckDebugByNtQueryInformationProcess_ProcessDebugObjectHandle()
 		(NtQueryInformationProcessPtr)GetProcAddress(hModule, "NtQueryInformationProcess");
 
 	pfnGetCurrentProcess MyGetCurrentProcess =
-		(pfnGetCurrentProcess)g_pfnGetProcAddress(hKernel32, "GetCurrentProcess");
+		(pfnGetCurrentProcess)g_pfnGetProcAddress(hKernel32, "GetCurrentProcessId");
 
 	MyNtQueryInformationProcess(MyGetCurrentProcess(), ProcessDebugObjectHandle, &hdebugObject, sizeof(hdebugObject), NULL);
 	return hdebugObject != NULL;
@@ -160,11 +167,13 @@ BOOL CheckDebugBy0xCC()
 	DWORD dwBaseImage = (DWORD)GetModuleHandle(NULL);
 
 	PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)dwBaseImage;;
-	PIMAGE_NT_HEADERS32 pNtHeaders = (PIMAGE_NT_HEADERS32)((DWORD)pDosHeader + pDosHeader->e_lfanew);;
+	PIMAGE_NT_HEADERS32 pNtHeaders = (PIMAGE_NT_HEADERS32)((DWORD)pDosHeader + pDosHeader->e_lfanew);
+
+	DWORD dwNumOfSection = pNtHeaders->FileHeader.NumberOfSections;
 	PIMAGE_SECTION_HEADER pSectionHeader = (PIMAGE_SECTION_HEADER)((DWORD)pNtHeaders + sizeof(pNtHeaders->Signature) + sizeof(IMAGE_FILE_HEADER) +
 		(WORD)pNtHeaders->FileHeader.SizeOfOptionalHeader);
 
-	DWORD dwAddr = pSectionHeader->VirtualAddress + dwBaseImage;
+	DWORD dwAddr = pSectionHeader[dwNumOfSection-1].VirtualAddress + dwBaseImage;
 	DWORD dwCodeSize = pSectionHeader->SizeOfRawData;
 	BOOL Found = FALSE;
 	__asm
@@ -172,7 +181,7 @@ BOOL CheckDebugBy0xCC()
 		cld
 		mov     edi, dwAddr
 		mov     ecx, dwCodeSize
-		mov     al, 0CCH
+		mov     al, 0xCC
 		repne   scasb      //…®√Ë±»Ωœ
 		jnz     NotFound
 		mov Found, 1

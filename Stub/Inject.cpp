@@ -45,7 +45,7 @@ BOOL InjectDll(char* cpDllFile, char* ProcessName)
 	pfnOpenProcessToken MyOpenProcessToken =
 		(pfnOpenProcessToken)g_pfnGetProcAddress(hAdvapi32,"OpenProcessToken");
 	pfnGetCurrentProcess MyGetCurrentProcess =
-		(pfnGetCurrentProcess)g_pfnGetProcAddress(hAdvapi32, "GetCurrentProcess");
+		(pfnGetCurrentProcess)g_pfnGetProcAddress(hKernel32, "GetCurrentProcess");
 
 	pfnLookupPrivilegeValueA MyLookupPrivilegeValueA =
 		(pfnLookupPrivilegeValueA)g_pfnGetProcAddress(hAdvapi32, "LookupPrivilegeValueA");
